@@ -106,35 +106,67 @@ def calcular():
 # -------- NOVA rota: preview bonitinho --------
 @app.route("/preview", methods=["POST"])
 def preview():
-    if "file" not in request.files:
-        flash("Envie um arquivo XML.", "danger")
-        return redirect(url_for("index"))
-    f = request.files["file"]
-    if f.filename == "" or not allowed(f.filename):
-        flash("Arquivo inválido. Envie uma NF-e em XML.", "danger")
+    # Aceita 'file' ou 'xml' como nome do input
+    f = request.files.get("file") or request.files.get("xml")
+    if not f:
+        flash("Nenhum arquivo foi enviado (campo 'file' ou 'xml').", "warning")
         return redirect(url_for("index"))
 
-    xml_bytes = f.read()
+    if f.filename == "":
+        flash("Arquivo sem nome. Escolha um XML válido.", "warning")
+        return redirect(url_for("index"))
+
+    if not allowed(f.filename):
+        flash("Extensão inválida. Envie um arquivo .xml de NF-e.", "warning")
+        return redirect(url_for("index"))
+
     try:
+        xml_bytes = f.read()
+        if not xml_bytes:
+            flash("Arquivo está vazio.", "warning")
+            return redirect(url_for("index"))
+
+        # Parse do XML
         nfe = NFEXML(xml_bytes)
-        head = nfe.header()
-        produtos = nfe.itens_detalhados()
+        head = nfe.header()  # ex.: {'uf_origem': 'SP', 'uf_destino': 'AM'}
+        itens = nfe.itens()
+
+        # Vamos mostrar um preview com os campos básicos que você quer ver
+        linhas = []
+        for it in itens:
+            linhas.append({
+                "seq": getattr(it, "nItem", 0),
+                "cod": getattr(it, "cProd", ""),
+                "desc": getattr(it, "xProd", ""),
+                "ncm": getattr(it, "ncm", ""),
+                "cfop": getattr(it, "cfop", ""),
+                "cst": getattr(it, "cst", ""),
+                "quant": float(getattr(it, "qCom", 0.0)),
+                "vun":   float(getattr(it, "vUnCom", 0.0)),
+                "vprod": float(getattr(it, "vProd", 0.0)),
+                "frete": float(getattr(it, "vFrete", 0.0)),
+                "ipi":   float(getattr(it, "vIPI", 0.0)),
+                "vout":  float(getattr(it, "vOutro", 0.0)),
+                "vdesc": float(getattr(it, "vDesc", 0.0)),
+                "icms_deson": float(getattr(it, "vICMSDeson", 0.0)),
+            })
+
+        # Para o botão "Calcular", precisamos mandar o XML de volta.
+        # Serializamos em base64 para um <input type="hidden"> no preview.html.
+        import base64
+        xml_b64 = base64.b64encode(xml_bytes).decode("ascii")
+
+        return render_template(
+            "preview.html",
+            head=head,
+            linhas=linhas,
+            xml_b64=xml_b64
+        )
     except Exception as e:
+        # Loga no console e volta pra index com aviso
+        app.logger.exception("Falha no preview")
         flash(f"Não foi possível ler o XML: {e}", "danger")
         return redirect(url_for("index"))
-
-    # parâmetros default do cálculo (pode mudar na UI)
-    uf_origem = head.get("uf_origem") or request.form.get("uf_origem", "SP").upper()
-    uf_destino = head.get("uf_destino") or request.form.get("uf_destino", "AM").upper()
-
-    return render_template(
-        "preview.html",
-        head=head,
-        produtos=produtos,
-        xml_b64=base64.b64encode(xml_bytes).decode("ascii"),
-        uf_origem=uf_origem,
-        uf_destino=uf_destino
-    )
 
 @app.route("/admin/run-update")
 def run_update():

@@ -1,167 +1,181 @@
-from xml.etree import ElementTree as ET
-from typing import List, Dict, Any
-from calc import ItemNF
+# xml_parser.py
+from dataclasses import dataclass
+from typing import List, Dict, Any, Optional
+import xml.etree.ElementTree as ET
 
-NS = {"nfe": "http://www.portalfiscal.inf.br/nfe"}
+# -----------------------------------------------------------------------------
+# Modelo de item: inclui nomes "duplicados" para compatibilidade com seu calc.py
+# e para exibir exatamente os campos que você quer na tabela.
+# -----------------------------------------------------------------------------
+@dataclass
+class ItemNF:
+    # Identificação
+    nItem: int
+    cProd: str
+    xProd: str
+    ncm: str
+    cfop: str
+    cst: str  # CST ou CSOSN (o que existir)
 
-def _txt(node, path: str) -> str:
-    el = node.find(path, NS)
-    return el.text.strip() if el is not None and el.text else ""
+    # Quantidade / valores por item
+    qCom: float
+    vUnCom: float
 
-def _num(s: str) -> float:
-    try:
-        return float(str(s).replace(",", ".")) if s not in (None, "") else 0.0
-    except Exception:
-        return 0.0
+    # Totais do item (nomenclaturas compatíveis)
+    vProd: float                 # valor total do produto no item
+    valor_produto: float         # alias de vProd
+
+    vFrete: float                # frete informado no item (se vier)
+    frete_rateado: float         # alias de vFrete (ou 0.0 se não vier)
+
+    vOutro: float                # despesas acessórias do item
+    despesas_acessorias: float   # alias
+
+    vDesc: float                 # desconto do item
+    descontos: float             # alias
+
+    vIPI: float                  # IPI do item (se houver)
+    ipi: float                   # alias
+
+    # ICMS destacado e desoneração
+    vICMS: float                 # ICMS destacado do item (se houver)
+    icms_destacado_origem: float # alias
+
+    vICMSDeson: float            # ICMS desonerado (se houver)
+    icms_desonerado: float       # alias
+
+    motDesICMS: str              # motivo da desoneração (se houver)
 
 class NFEXML:
-    def __init__(self, content: bytes):
-        self.doc = ET.fromstring(content)
+    def __init__(self, xml_bytes: bytes):
+        # Algumas NF-e usam ns diferentes; { * } nas buscas abaixa o namespace.
+        self.root = ET.fromstring(xml_bytes)
+
+    # Helper para buscar nós com namespace “curinga”
+    def _find(self, path: str) -> Optional[ET.Element]:
+        return self.root.find(f".//{{*}}{path}")
+
+    def _findall(self, path: str) -> List[ET.Element]:
+        return self.root.findall(f".//{{*}}{path}")
+
+    def _txtf(self, el: Optional[ET.Element], path: str, default: float = 0.0) -> float:
+        try:
+            txt = (el.findtext(f".//{{*}}{path}") if el is not None else None) or ""
+            txt = txt.strip().replace(",", ".")
+            return float(txt) if txt else default
+        except Exception:
+            return default
+
+    def _txt(self, el: Optional[ET.Element], path: str, default: str = "") -> str:
+        try:
+            txt = (el.findtext(f".//{{*}}{path}") if el is not None else None)
+            return (txt or default).strip()
+        except Exception:
+            return default
 
     def header(self) -> Dict[str, Any]:
-        ide = self.doc.find(".//nfe:ide", NS)
-        emit = self.doc.find(".//nfe:emit", NS)
-        dest = self.doc.find(".//nfe:dest", NS)
-        chave = ""
-        inf = self.doc.find(".//nfe:infNFe", NS)
-        if inf is not None:
-            chave = (inf.attrib.get("Id", "") or "").replace("NFe", "")
-        if not chave:
-            chave = _txt(self.doc, ".//nfe:protNFe/nfe:infProt/nfe:chNFe")
-        return {
-            "chave": chave,
-            "emitente_nome": _txt(emit, "nfe:xNome"),
-            "emitente_cnpj": _txt(emit, "nfe:CNPJ"),
-            "dest_nome": _txt(dest, "nfe:xNome"),
-            "dest_cnpj": _txt(dest, "nfe:CNPJ"),
-            "numero": _txt(ide, "nfe:nNF"),
-            "serie": _txt(ide, "nfe:serie"),
-            "dhEmi": _txt(ide, "nfe:dhEmi") or _txt(ide, "nfe:dEmi"),
-            "natOp": _txt(ide, "nfe:natOp"),
-            "uf_origem": _txt(emit, "nfe:enderEmit/nfe:UF"),
-            "uf_destino": _txt(dest, "nfe:enderDest/nfe:UF"),
-        }
-
-    def itens_detalhados(self) -> List[Dict[str, Any]]:
-        linhas = []
-        for det in self.doc.findall(".//nfe:det", NS):
-            prod = det.find(".//nfe:prod", NS)
-            if prod is None:
-                continue
-            cst = ""
-            icms_parent = det.find(".//nfe:ICMS", NS)
-            if icms_parent is not None:
-                for child in icms_parent:
-                    cst_el = child.find("nfe:CST", NS)
-                    if cst_el is not None and cst_el.text:
-                        cst = cst_el.text
-                        break
-            linhas.append({
-                "seq": det.attrib.get("nItem", ""),
-                "codigo": _txt(prod, "nfe:cProd"),
-                "descricao": _txt(prod, "nfe:xProd"),
-                "ncm": _txt(prod, "nfe:NCM"),
-                "cst": cst,
-                "cfop": _txt(prod, "nfe:CFOP"),
-                "uCom": _txt(prod, "nfe:uCom"),
-                "qCom": _num(_txt(prod, "nfe:qCom")),
-                "vUnCom": _num(_txt(prod, "nfe:vUnCom")),
-                "vProd": _num(_txt(prod, "nfe:vProd")),
-            })
-        return linhas
+        emit = self._find("emit")
+        dest = self._find("dest")
+        uf_origem = self._txt(emit, "UF", "").upper()
+        uf_destino = self._txt(dest, "UF", "").upper()
+        return {"uf_origem": uf_origem, "uf_destino": uf_destino}
 
     def itens(self) -> List[ItemNF]:
-        dets = self.doc.findall(".//nfe:det", NS)
+        out: List[ItemNF] = []
 
-        # total de frete da NF (vFrete pode estar em ICMSTot ou em transp)
-        vfrete_total = _num(_txt(self.doc, ".//nfe:total/nfe:ICMSTot/nfe:vFrete")) \
-            or _num(_txt(self.doc, ".//nfe:transp/nfe:vFrete"))
+        # Em muitas NF-e o frete não vem por item; vem no total (total/vNF/vFrete).
+        # Aqui buscamos apenas o que estiver no item (prod.vFrete). Se vier vazio, fica 0.0
+        for det in self._findall("det"):
+            prod = det.find(".//{*}prod")
+            imposto = det.find(".//{*}imposto")
 
-        # somatório para rateio do frete
-        soma_vprod = 0.0
-        vprod_list = []
-        for det in dets:
-            prod = det.find(".//nfe:prod", NS)
-            vp = _num(_txt(prod, "nfe:vProd")) if prod is not None else 0.0
-            vprod_list.append(vp)
-            soma_vprod += vp
-        soma_vprod = soma_vprod if soma_vprod > 0 else 1.0
+            nItem = int(det.attrib.get("nItem", "0") or 0)
+            cProd = self._txt(prod, "cProd")
+            xProd = self._txt(prod, "xProd")
+            ncm   = self._txt(prod, "NCM")
+            cfop  = self._txt(prod, "CFOP")
 
-        itens: List[ItemNF] = []
-        for idx, det in enumerate(dets, start=1):
-            prod = det.find(".//nfe:prod", NS)
-            if prod is None:
-                continue
-
-            # ICMS grupo
-            icms_parent = det.find(".//nfe:ICMS", NS)
+            # CST / CSOSN
             cst = ""
-            vicms_origem = 0.0
-            vicms_deson = 0.0
-            mot_des = ""
-            vicms_st_retido = 0.0  # vICMSST no item (se o emissor reteve)
+            icms_node = None
+            if imposto is not None:
+                # Existem vários grupos: ICMS00, ICMS20, ICMS10, ICMS40, ICMS60, CSOSNxxx etc.
+                # Pegamos o primeiro grupo ICMS* existente.
+                for child in imposto.findall(".//{*}ICMS/*"):
+                    icms_node = child
+                    break
+            if icms_node is not None:
+                cst = (icms_node.findtext(".//{*}CST") or icms_node.findtext(".//{*}CSOSN") or "").strip()
 
-            if icms_parent is not None:
-                for child in icms_parent:
-                    cst_el = child.find("nfe:CST", NS)
-                    if cst_el is not None and cst_el.text:
-                        cst = cst_el.text
-                    vICMS = child.find("nfe:vICMS", NS)
-                    if vICMS is not None and vICMS.text:
-                        vicms_origem = _num(vICMS.text)
-                    vDes = child.find("nfe:vICMSDeson", NS)
-                    if vDes is not None and vDes.text:
-                        vicms_deson = _num(vDes.text)
-                    mot = child.find("nfe:motDesICMS", NS)
-                    if mot is not None and mot.text:
-                        mot_des = mot.text
-                    vICMSST = child.find("nfe:vICMSST", NS)
-                    if vICMSST is not None and vICMSST.text:
-                        vicms_st_retido = _num(vICMSST.text)
+            # Quantidades e valores
+            def fnum(tag: str, default: float = 0.0) -> float:
+                return self._txtf(prod, tag, default)
 
-            # IPI do item
-            ipi = 0.0
-            ipi_node = det.find(".//nfe:IPI", NS)
-            if ipi_node is not None:
-                vipi = ipi_node.find(".//nfe:vIPI", NS)
-                if vipi is not None and vipi.text:
-                    ipi = _num(vipi.text)
+            qCom   = fnum("qCom")
+            vUnCom = fnum("vUnCom")
+            vProd  = fnum("vProd")
+            vFrete = fnum("vFrete")          # pode ser 0 na maioria dos casos
+            vOutro = fnum("vOutro")
+            vDesc  = fnum("vDesc")
 
-            # campos de produto
-            ncm = _txt(prod, "nfe:NCM")
-            cfop = _txt(prod, "nfe:CFOP")
-            cest = _txt(prod, "nfe:CEST")
-            vprod = _num(_txt(prod, "nfe:vProd"))
-            vun = _num(_txt(prod, "nfe:vUnCom"))
-            qcom = _num(_txt(prod, "nfe:qCom"))
-            vdesc = _num(_txt(prod, "nfe:vDesc"))
-            vout  = _num(_txt(prod, "nfe:vOutro"))
-            vfrete_item = _num(_txt(prod, "nfe:vFrete"))
+            # IPI (se houver)
+            vIPI = 0.0
+            if imposto is not None:
+                vIPI = self._txtf(imposto, "IPI/vIPI", 0.0)
 
-            # rateio do frete total, se não houver por item
-            if vfrete_item == 0.0 and vfrete_total > 0:
-                proporcao = (vprod / soma_vprod) if soma_vprod else 0.0
-                vfrete_item = vfrete_total * proporcao
+            # ICMS destacado
+            vICMS = 0.0
+            if imposto is not None:
+                # vICMS costuma estar dentro do subgrupo do ICMS daquele item
+                # Ex.: imposto/ICMS/ICMS20/vICMS
+                vICMS_el = imposto.find(".//{*}ICMS//{*}vICMS")
+                if vICMS_el is not None:
+                    try:
+                        vICMS = float(vICMS_el.text.strip().replace(",", "."))
+                    except Exception:
+                        vICMS = 0.0
 
-            itens.append(ItemNF(
-                seq=str(det.attrib.get("nItem", idx)),
-                codigo=_txt(prod, "nfe:cProd"),
-                descricao=_txt(prod, "nfe:xProd"),
+            # ICMS desonerado e motivo
+            vICMSDeson = 0.0
+            motDesICMS = ""
+            if imposto is not None:
+                vICMSDeson = self._txtf(imposto, "ICMS//vICMSDeson", 0.0)
+                motDesICMS = self._txt(imposto, "ICMS//motDesICMS", "")
+
+            # Construção do Item com aliases para manter compatibilidade
+            out.append(ItemNF(
+                nItem=nItem,
+                cProd=cProd,
+                xProd=xProd,
                 ncm=ncm,
                 cfop=cfop,
                 cst=cst,
-                quantidade=qcom,
-                valor_unitario=vun,
-                valor_produto=vprod,
-                frete_rateado=vfrete_item,
-                descontos=vdesc,
-                despesas_acessorias=vout,
-                ipi=ipi,
-                icms_destacado_origem=vicms_origem,
-                icms_desonerado=vicms_deson,
-                motivo_desoneracao=mot_des,
-                icms_st_retido=vicms_st_retido,
-                cest=cest
+
+                qCom=qCom,
+                vUnCom=vUnCom,
+
+                vProd=vProd,
+                valor_produto=vProd,         # alias
+
+                vFrete=vFrete,
+                frete_rateado=vFrete,        # alias (se vFrete=0, fica 0; pode ser rateado depois)
+
+                vOutro=vOutro,
+                despesas_acessorias=vOutro,  # alias
+
+                vDesc=vDesc,
+                descontos=vDesc,             # alias
+
+                vIPI=vIPI,
+                ipi=vIPI,                    # alias
+
+                vICMS=vICMS,
+                icms_destacado_origem=vICMS, # alias
+
+                vICMSDeson=vICMSDeson,
+                icms_desonerado=vICMSDeson,  # alias
+
+                motDesICMS=motDesICMS,
             ))
 
-        return itens
+        return out
