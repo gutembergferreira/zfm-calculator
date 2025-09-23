@@ -44,6 +44,20 @@ scheduler = BackgroundScheduler(daemon=True)
 scheduler.add_job(lambda: run_update_am(sheet_client), "cron", day=1, hour=3, minute=0)
 scheduler.start()
 
+def _xml_from_request():
+    # 1) upload de arquivo
+    if "file" in request.files:
+        f = request.files["file"]
+        if f and f.filename:
+            return f.read()
+    # 2) xml vindo da tela de pré-visualização (hidden)
+    xml_b64 = request.form.get("xml_b64")
+    if xml_b64:
+        try:
+            return base64.b64decode(xml_b64)
+        except Exception:
+            return None
+    return None
 # ---------------------------------------
 # Rotas
 # ---------------------------------------
@@ -118,67 +132,35 @@ def calcular():
 # -------- NOVA rota: preview bonitinho --------
 @app.route("/preview", methods=["POST"])
 def preview():
-    # Aceita 'file' ou 'xml' como nome do input
-    f = request.files.get("file") or request.files.get("xml")
-    if not f:
-        flash("Nenhum arquivo foi enviado (campo 'file' ou 'xml').", "warning")
+    xml_bytes = _xml_from_request()
+    if not xml_bytes:
+        flash("Envie um arquivo XML válido.")
         return redirect(url_for("index"))
 
-    if f.filename == "":
-        flash("Arquivo sem nome. Escolha um XML válido.", "warning")
-        return redirect(url_for("index"))
+    nfe = NFEXML(xml_bytes)
+    doc = nfe.meta()           # <<< cabeçalho completo
+    itens = nfe.itens()        # <<< lista de itens para a tabela
 
-    if not allowed(f.filename):
-        flash("Extensão inválida. Envie um arquivo .xml de NF-e.", "warning")
-        return redirect(url_for("index"))
+    xml_b64 = base64.b64encode(xml_bytes).decode("ascii")
 
-    try:
-        xml_bytes = f.read()
-        if not xml_bytes:
-            flash("Arquivo está vazio.", "warning")
-            return redirect(url_for("index"))
+    # mantém filtros que você já usa
+    uf_origem = request.form.get("uf_origem", doc.get("uf_origem") or "SP")
+    uf_destino = request.form.get("uf_destino", doc.get("uf_destino") or "AM")
+    usar_mult = request.form.get("usar_multiplicador", "on") == "on"
 
-        # Parse do XML
-        nfe = NFEXML(xml_bytes)
-        head = nfe.header()  # ex.: {'uf_origem': 'SP', 'uf_destino': 'AM'}
-        itens = nfe.itens()
+    # se a tela usa estes nomes, passe-os assim:
+    return render_template(
+        "preview.html",
+        head=doc,
+        doc=doc,               # <<< cabeçalho para os cards
+        itens=itens,           # <<< tabela de produtos
+        itens_count=len(itens),
+        xml_b64=xml_b64,
+        uf_origem=uf_origem,
+        uf_destino=uf_destino,
+        usar_mult=usar_mult
+    )
 
-        # Vamos mostrar um preview com os campos básicos que você quer ver
-        linhas = []
-        for it in itens:
-            linhas.append({
-                "seq": getattr(it, "nItem", 0),
-                "cod": getattr(it, "cProd", ""),
-                "desc": getattr(it, "xProd", ""),
-                "ncm": getattr(it, "ncm", ""),
-                "cfop": getattr(it, "cfop", ""),
-                "cst": getattr(it, "cst", ""),
-                "quant": float(getattr(it, "qCom", 0.0)),
-                "vun":   float(getattr(it, "vUnCom", 0.0)),
-                "vprod": float(getattr(it, "vProd", 0.0)),
-                "frete": float(getattr(it, "vFrete", 0.0)),
-                "ipi":   float(getattr(it, "vIPI", 0.0)),
-                "vout":  float(getattr(it, "vOutro", 0.0)),
-                "vdesc": float(getattr(it, "vDesc", 0.0)),
-                "icms_deson": float(getattr(it, "vICMSDeson", 0.0)),
-            })
-
-        # Para o botão "Calcular", precisamos mandar o XML de volta.
-        # Serializamos em base64 para um <input type="hidden"> no preview.html.
-        import base64
-        xml_b64 = base64.b64encode(xml_bytes).decode("ascii")
-
-        return render_template(
-            "preview.html",
-            head=head,
-            linhas=linhas,
-            xml_b64=xml_b64
-        )
-    except Exception as e:
-        # Loga no console e volta pra index com aviso
-        app.logger.exception("Falha no preview")
-        flash(f"Não foi possível ler o XML: {e}", "danger")
-        return redirect(url_for("index"))
 
 @app.route("/admin/run-update")
 def run_update():

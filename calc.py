@@ -143,66 +143,79 @@ class MotorCalculo:
 
     # calc.py — dentro da classe MotorCalculo
 
-
+    # calc.py — dentro da classe MotorCalculo
+    # (mantém o resto do arquivo igual; apenas substitua este método)
 
     def calcula_st(self, item: "ItemNF", uf_origem: str, uf_destino: str,
                    usar_multiplicador: bool = True) -> "ResultadoItem":
-        # Busca parâmetros como você já faz hoje
         p = self._busca_param(item.ncm, uf_origem, uf_destino)
 
         memoria = {"parametros": p}
 
-        # --------- Campos “de entrada” (para exibir) ----------
-        sequencial_item = int(getattr(item, "nItem", 0))
-        cod_produto = getattr(item, "cProd", "")
-        descricao = getattr(item, "xProd", "")
+        # --- entradas do item (com fallback pros nomes que já existem no seu modelo) ---
+        def _f(x, d=0.0):
+            try:
+                return float(x or 0.0)
+            except Exception:
+                return d
+
+        seq = int(getattr(item, "nItem", 0))
+        cprod = getattr(item, "cProd", "")
+        xprod = getattr(item, "xProd", "")
         ncm = getattr(item, "ncm", "")
+        cfop = getattr(item, "cfop", "")
+        cst = getattr(item, "cst", "")
         quant = _f(getattr(item, "qCom", 0.0))
-        valor_unit = _f(getattr(item, "vUnCom", 0.0))
-        vlr_total_prod = _f(getattr(item, "vProd", 0.0))
-        frete = _f(getattr(item, "vFrete", 0.0) if hasattr(item, "vFrete") else getattr(item, "frete_rateado", 0.0))
-        ipi = _f(getattr(item, "vIPI", 0.0) if hasattr(item, "vIPI") else getattr(item, "ipi", 0.0))
-        desp_aces = _f(
-            getattr(item, "vOutro", 0.0) if hasattr(item, "vOutro") else getattr(item, "despesas_acessorias", 0.0))
-        descontos = _f(getattr(item, "vDesc", 0.0) if hasattr(item, "vDesc") else getattr(item, "descontos", 0.0))
-        icms_desonerado = _f(
-            getattr(item, "vICMSDeson", 0.0) if hasattr(item, "vICMSDeson") else getattr(item, "icms_desonerado", 0.0))
-        icms_dest_origem = _f(
-            getattr(item, "vICMS", 0.0) if hasattr(item, "vICMS") else getattr(item, "icms_destacado_origem", 0.0))
+        vun = _f(getattr(item, "vUnCom", 0.0))
 
-        # --------- Cálculos base alinhados ao que você quer ver ----------
-        # Valor da venda com desconto de ICMS (conferência)
-        valor_venda_com_desc_icms = vlr_total_prod - icms_desonerado
+        vprod = _f(getattr(item, "vProd", getattr(item, "valor_produto", 0.0)))
+        vfrete = _f(getattr(item, "vFrete", getattr(item, "frete_rateado", 0.0)))
+        vout = _f(getattr(item, "vOutro", getattr(item, "despesas_acessorias", 0.0)))
+        vdesc = _f(getattr(item, "vDesc", getattr(item, "descontos", 0.0)))
+        vipi = _f(getattr(item, "vIPI", getattr(item, "ipi", 0.0)))
+        vdeson = _f(getattr(item, "vICMSDeson", getattr(item, "icms_desonerado", 0.0)))
+        vicms_origem_destacado = _f(getattr(item, "vICMS", getattr(item, "icms_destacado_origem", 0.0)))
 
-        # Valor da Operação = Produto + Frete + Desp.Acess. + IPI - Descontos
-        valor_operacao = vlr_total_prod + frete + desp_aces + ipi - descontos
+        # --- valor da operação padrão ---
+        valor_oper_sem_desc = vprod + vfrete + vout + vipi - vdesc
 
-        # Escolha MVA x MULT (sua regra atual)
-        if usar_multiplicador and p.get("MULT", 0.0) > 0:
-            perc = _f(p["MULT"])
+        # --- conforme sua planilha: desconta o ICMS desonerado da base da MVA ---
+        valor_venda_desc_icms = valor_oper_sem_desc - vdeson
+        if valor_venda_desc_icms < 0:
+            valor_venda_desc_icms = 0.0
+
+        # --- MVA x Multiplicador (para formação da base ST) ---
+        # p["MVA"] vem como % (ex.: 35 -> 35%). Se vier fracionário (0.35), converta antes na _busca_param.
+        if usar_multiplicador and _f(p.get("MULT", 0.0)) > 0:
+            perc_mva = _f(p["MULT"])
             mva_tipo = "multiplicador_zfm"
         else:
-            perc = _f(p.get("MVA", 0.0))
+            perc_mva = _f(p.get("MVA", 0.0))
             mva_tipo = "mva_percentual"
 
-        fator = 1.0 + (perc / 100.0)  # fator multiplicador (ex.: 1.50 para 50%)
+        fator_mva = 1.0 + (perc_mva / 100.0)
+        valor_agregado = valor_venda_desc_icms * (fator_mva - 1.0)
+        base_st = valor_venda_desc_icms * fator_mva
 
-        # Valor Agregado e Base ST
-        valor_agregado = valor_operacao * (fator - 1.0)
-        base_st = valor_operacao * fator
+        # --- alíquotas ---
+        aliq_dest = _f(p.get("ALI_INT", 0.18))  # decimal
+        aliq_inter = _f(p.get("ALI_INTER", 0.12))
 
-        # Alíquota ICMS-ST (usamos ALI_INT como “alíquota destino”)
-        aliq_st = _f(p.get("ALI_INT", 0.18))  # decimal
+        # --- ICMS teórico do destino ---
+        icms_teorico_dest = base_st * aliq_dest
 
-        # ICMS teórico do destino
-        icms_teorico_dest = base_st * aliq_st
+        # --- ICMS de origem (abatimento) ---
+        # regra da planilha: usa "Multiplicador SEFAZ" se existir; senão cai pra ALI_INTER
+        mult_sefaz = _f(p.get("MULT_SEFAZ", p.get("MULT_ORIGEM", 0.0)))
+        if mult_sefaz > 0:
+            icms_origem_calc = valor_venda_desc_icms * mult_sefaz  # mult_sefaz já deve vir decimal (ex.: 0.1947)
+            mult_exibicao = mult_sefaz
+        else:
+            icms_origem_calc = valor_venda_desc_icms * aliq_inter
+            mult_exibicao = aliq_inter
 
-        # ICMS origem (interestadual) “de abatimento” (modelo encerramento)
-        ali_inter = _f(p.get("ALI_INTER", 0.12))
-        icms_origem_calc = valor_operacao * ali_inter
-
-        # Crédito presumido (se você já usa — senão isso fica 0)
-        cred_perc = _f(p.get("CRED_PERC", 0.0))
+        # --- crédito presumido (se houver política ativa) ---
+        cred_perc = _f(p.get("CRED_PERC", 0.0))  # decimal
         cred_tipo = str(p.get("CRED_TIPO", "SOBRE_DEBITO")).upper()
         if cred_perc > 0:
             credito_presumido = (icms_teorico_dest * cred_perc) if cred_tipo == "SOBRE_DEBITO" else (
@@ -210,40 +223,42 @@ class MotorCalculo:
         else:
             credito_presumido = 0.0
 
-        # ICMS-ST devido (modelo encerramento “padrão”)
-        icms_st = icms_teorico_dest - icms_origem_calc - icms_dest_origem - credito_presumido - icms_desonerado
+        # --- ICMS-ST devido ---
+        icms_st = icms_teorico_dest - icms_origem_calc - vicms_origem_destacado - credito_presumido
+        # (o ICMS desonerado foi tirado da base; não subtrai novamente aqui)
         if icms_st < 0:
             icms_st = 0.0
 
-        # --------- Preenche a memória com os NOMES que você quer na tela ----------
+        # --- memória com os nomes idênticos aos da sua planilha/tela ---
         memoria.update({
-            "SEQUENCIAL ITEM": sequencial_item,
-            "COD. PRODUTO": cod_produto,
-            "DESCRIÇÃO": descricao,
+            "SEQUENCIAL ITEM": seq,
+            "COD. PRODUTO": cprod,
+            "DESCRIÇÃO": xprod,
             "NCM": ncm,
             "QUANT.": quant,
-            "VALOR UNIT.": valor_unit,
-            "VLR TOTAL PRODUTO.": vlr_total_prod,
-            "FRETE": frete,
-            "IPI": ipi,
-            "DESP. ACES.": desp_aces,
-            "ICMS DESONERADO": icms_desonerado,
-            "VALOR DA VENDA COM DESCONTO DE ICMS": valor_venda_com_desc_icms,
-            "VALOR DA OPERAÇÃO": valor_operacao,
-            "MARGEM DE VALOR AGREGADO - MVA": perc,  # em %
+            "VALOR UNIT.": vun,
+            "VLR TOTAL PRODUTO.": vprod,
+            "FRETE": vfrete,
+            "IPI": vipi,
+            "DESP. ACES.": vout,
+            "ICMS DESONERADO": vdeson,
+            "VALOR DA VENDA COM DESCONTO DE ICMS": valor_venda_desc_icms,
+            "VALOR DA OPERAÇÃO": valor_venda_desc_icms,  # sua planilha mostra ambos iguais
+            "MARGEM DE VALOR AGREGADO - MVA": perc_mva,  # em %
             "VALOR AGREGADO": valor_agregado,
             "BASE DE CÁLCULO SUBSTITUIÇÃO TRIBUTÁRIA": base_st,
-            "ALÍQUOTA ICMS-ST": aliq_st,  # decimal (exibir como % na view)
+            "ALÍQUOTA ICMS-ST": aliq_dest,  # decimal
             "VALOR DO ICMS ST": icms_st,
             "VALOR SALDO DEVEDOR ICMS ST": icms_st,
-            "MULTIPLICADOR SEFAZ": fator,  # fator (ex.: 1.50)
+            "MULTIPLICADOR SEFAZ": mult_exibicao,  # decimal (ex.: 0.1947)
             "VALOR ICMS RETIDO": icms_st,
 
-            # extras úteis para auditoria
             "mva_tipo": mva_tipo,
             "icms_teorico_dest": icms_teorico_dest,
             "icms_origem_calc": icms_origem_calc,
             "credito_presumido": credito_presumido,
+            "cfop": cfop,
+            "cst": cst,
         })
 
         return ResultadoItem(
@@ -251,3 +266,4 @@ class MotorCalculo:
             icms_st_devido=icms_st,
             memoria=memoria
         )
+

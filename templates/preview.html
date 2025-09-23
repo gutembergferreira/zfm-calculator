@@ -96,20 +96,21 @@
                             </tr>
                             </thead>
                             <tbody>
-                            {% for p in produtos %}
+                            {% for it in itens %}
                             <tr>
-                                <td class="text-nowrap">{{ p.codigo }}</td>
-                                <td style="min-width:360px">{{ p.descricao }}</td>
-                                <td>{{ p.ncm }}</td>
-                                <td>{{ p.cst }}</td>
-                                <td>{{ p.cfop }}</td>
-                                <td>{{ p.uCom }}</td>
-                                <td class="text-end">{{ "%.2f"|format(p.vUnCom) }}</td>
-                                <td class="text-end">{{ "%.4f"|format(p.qCom) }}</td>
-                                <td class="text-end">{{ "%.2f"|format(p.vProd) }}</td>
+                                <td>{{ it.cProd }}</td>
+                                <td class="text-truncate" style="max-width:420px">{{ it.xProd }}</td>
+                                <td>{{ it.ncm }}</td>
+                                <td>{{ it.cst }}</td>
+                                <td>{{ it.cfop }}</td>
+                                <td>{{ it.uCom or it.uTrib or "-" }}</td>
+                                <td class="text-end">{{ "%.4f"|format(it.vUnCom) }}</td>
+                                <td class="text-end">{{ "%.4f"|format(it.qCom) }}</td>
+                                <td class="text-end">{{ "%.2f"|format(it.vProd) }}</td>
                             </tr>
                             {% endfor %}
                             </tbody>
+                            <div class="small text-muted px-3 pb-2">Itens: {{ itens|length }}</div>
                         </table>
                     </div>
 

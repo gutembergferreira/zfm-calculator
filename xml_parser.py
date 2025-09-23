@@ -47,6 +47,46 @@ class ItemNF:
     motDesICMS: str              # motivo da desoneração (se houver)
 
 class NFEXML:
+    # dentro de xml_parser.NFEXML
+
+    def _txt_root(self, path: str, default: str = "") -> str:
+        try:
+            el = self.root.find(f".//{{*}}{path}")
+            return (el.text or default).strip() if el is not None else default
+        except Exception:
+            return default
+
+    def meta(self) -> dict:
+        """Cabeçalho completo para a tela de preview."""
+        # Id da NFe fica em infNFe/@Id = "NFe3519...."
+        id_el = self.root.find(".//{*}infNFe")
+        chave = ""
+        if id_el is not None:
+            chave = (id_el.attrib.get("Id") or "").replace("NFe", "").strip()
+
+        emitente_nome = self._txt_root("emit/xNome")
+        emitente_cnpj = self._txt_root("emit/CNPJ")
+        destinat_nome = self._txt_root("dest/xNome")
+        destinat_cnpj = self._txt_root("dest/CNPJ")
+
+        numero = self._txt_root("ide/nNF")
+        serie = self._txt_root("ide/serie")
+        dh_emi = self._txt_root("ide/dhEmi") or self._txt_root("ide/dEmi")
+
+        uf_origem = self._txt_root("emit/UF").upper()
+        uf_dest = self._txt_root("dest/UF").upper()
+
+        return {
+            "chave": chave,
+            "emitente": {"nome": emitente_nome, "cnpj": emitente_cnpj},
+            "destinatario": {"nome": destinat_nome, "cnpj": destinat_cnpj},
+            "numero": numero,
+            "serie": serie,
+            "dhEmi": dh_emi,
+            "uf_origem": uf_origem,
+            "uf_destino": uf_dest,
+        }
+
     def __init__(self, xml_bytes: bytes):
         # Algumas NF-e usam ns diferentes; { * } nas buscas abaixa o namespace.
         self.root = ET.fromstring(xml_bytes)
