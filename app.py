@@ -53,38 +53,50 @@ def index():
 
 @app.route("/calcular", methods=["POST"])
 def calcular():
-    xml_b64 = request.form.get("xml_b64")
-    if not xml_b64:
-        flash("XML ausente.", "danger")
-        return redirect(url_for("index"))
-    try:
-        xml_bytes = base64.b64decode(xml_b64)
-    except Exception as e:
-        flash(f"XML inválido: {e}", "danger")
+    xml_bytes = _xml_from_request()
+    if not xml_bytes:
+        flash("Não foi possível recuperar o XML.")
         return redirect(url_for("index"))
 
     nfe = NFEXML(xml_bytes)
     itens = nfe.itens()
-    uf_origem = request.form.get("uf_origem", "SP").upper()
-    uf_destino = request.form.get("uf_destino", "AM").upper()
+
+    uf_origem = request.form.get("uf_origem", "SP")
+    uf_destino = request.form.get("uf_destino", "AM")
     usar_mult = request.form.get("usar_multiplicador", "on") == "on"
 
-    linhas, total_st = [], 0.0
-    for idx, it in enumerate(itens, start=1):
+    linhas = []
+    total_st = 0.0
+    for it in itens:
         r = motor.calcula_st(it, uf_origem, uf_destino, usar_multiplicador=usar_mult)
+        m = r.memoria
         linhas.append({
-            "idx": idx,
-            "ncm": it.ncm,
+            "seq": m["SEQUENCIAL ITEM"],
+            "cod": m["COD. PRODUTO"],
+            "desc": m["DESCRIÇÃO"],
+            "ncm":  m["NCM"],
             "cfop": it.cfop,
-            "cst": it.cst,
-            "base_oper": r.memoria.get("base_oper", 0.0),
-            "mva_tipo": r.memoria.get("mva_tipo", "-"),
-            "mva_percentual": r.memoria.get("mva_percentual_aplicado", 0.0),  # << NOVO
-            "base_st": r.base_calculo_st,
-            "icms_teorico_dest": r.memoria.get("icms_teorico_dest", 0.0),
-            "icms_origem_calc": r.memoria.get("icms_origem_calc", 0.0),
-            "icms_st": r.icms_st_devido,
-            "motivo": r.memoria.get("motivo", "")
+            "cst":  it.cst,
+            "quant": m["QUANT."],
+            "vun":   m["VALOR UNIT."],
+            "vprod": m["VLR TOTAL PRODUTO."],
+            "frete": m["FRETE"],
+            "ipi":   m["IPI"],
+            "vout":  m["DESP. ACES."],
+            "icms_deson": m["ICMS DESONERADO"],
+            "venda_desc_icms": m["VALOR DA VENDA COM DESCONTO DE ICMS"],
+            "valor_oper":      m["VALOR DA OPERAÇÃO"],
+            "mva_tipo":        m["mva_tipo"],
+            "mva_percent":     m["MARGEM DE VALOR AGREGADO - MVA"],
+            "valor_agregado":  m["VALOR AGREGADO"],
+            "base_st":         m["BASE DE CÁLCULO SUBSTITUIÇÃO TRIBUTÁRIA"],
+            "aliq_st":         m["ALÍQUOTA ICMS-ST"],         # decimal
+            "icms_teorico_dest": m["icms_teorico_dest"],
+            "icms_origem_calc":  m["icms_origem_calc"],
+            "icms_st":         m["VALOR DO ICMS ST"],
+            "saldo_devedor":   m["VALOR SALDO DEVEDOR ICMS ST"],
+            "mult_sefaz":      m["MULTIPLICADOR SEFAZ"],      # fator
+            "icms_retido":     m["VALOR ICMS RETIDO"],
         })
         total_st += r.icms_st_devido
 
@@ -95,13 +107,13 @@ def calcular():
         "total_st": total_st,
     }
     payload_json = json.dumps(payload)
+
     return render_template("resultado.html",
                            linhas=linhas,
                            total_st=total_st,
                            uf_origem=uf_origem,
                            uf_destino=uf_destino,
                            payload_json=payload_json)
-
 
 # -------- NOVA rota: preview bonitinho --------
 @app.route("/preview", methods=["POST"])

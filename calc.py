@@ -23,6 +23,14 @@ class ResultadoItem:
     memoria: Dict[str, Any]
 
 # ---------------- helpers ----------------
+
+def _f(x: float) -> float:
+    try:
+        return float(x or 0.0)
+    except Exception:
+        return 0.0
+
+
 def _to_float(val, default=0.0):
     try:
         if val is None:
@@ -133,11 +141,9 @@ class MotorCalculo:
             "CRED_TIPO": cred_tipo,
         }
 
-    def _f(x: float) -> float:
-        try:
-            return float(x or 0.0)
-        except Exception:
-            return 0.0
+    # calc.py — dentro da classe MotorCalculo
+
+
 
     def calcula_st(self, item: "ItemNF", uf_origem: str, uf_destino: str,
                    usar_multiplicador: bool = True) -> "ResultadoItem":
@@ -151,17 +157,17 @@ class MotorCalculo:
         cod_produto = getattr(item, "cProd", "")
         descricao = getattr(item, "xProd", "")
         ncm = getattr(item, "ncm", "")
-        quant = self._f(getattr(item, "qCom", 0.0))
-        valor_unit = self._f(getattr(item, "vUnCom", 0.0))
-        vlr_total_prod = self._f(getattr(item, "vProd", 0.0))
-        frete = self._f(getattr(item, "vFrete", 0.0) if hasattr(item, "vFrete") else getattr(item, "frete_rateado", 0.0))
-        ipi = self._f(getattr(item, "vIPI", 0.0) if hasattr(item, "vIPI") else getattr(item, "ipi", 0.0))
-        desp_aces = self._f(
+        quant = _f(getattr(item, "qCom", 0.0))
+        valor_unit = _f(getattr(item, "vUnCom", 0.0))
+        vlr_total_prod = _f(getattr(item, "vProd", 0.0))
+        frete = _f(getattr(item, "vFrete", 0.0) if hasattr(item, "vFrete") else getattr(item, "frete_rateado", 0.0))
+        ipi = _f(getattr(item, "vIPI", 0.0) if hasattr(item, "vIPI") else getattr(item, "ipi", 0.0))
+        desp_aces = _f(
             getattr(item, "vOutro", 0.0) if hasattr(item, "vOutro") else getattr(item, "despesas_acessorias", 0.0))
-        descontos = self._f(getattr(item, "vDesc", 0.0) if hasattr(item, "vDesc") else getattr(item, "descontos", 0.0))
-        icms_desonerado = self._f(
+        descontos = _f(getattr(item, "vDesc", 0.0) if hasattr(item, "vDesc") else getattr(item, "descontos", 0.0))
+        icms_desonerado = _f(
             getattr(item, "vICMSDeson", 0.0) if hasattr(item, "vICMSDeson") else getattr(item, "icms_desonerado", 0.0))
-        icms_dest_origem = self._f(
+        icms_dest_origem = _f(
             getattr(item, "vICMS", 0.0) if hasattr(item, "vICMS") else getattr(item, "icms_destacado_origem", 0.0))
 
         # --------- Cálculos base alinhados ao que você quer ver ----------
@@ -173,10 +179,10 @@ class MotorCalculo:
 
         # Escolha MVA x MULT (sua regra atual)
         if usar_multiplicador and p.get("MULT", 0.0) > 0:
-            perc = self._f(p["MULT"])
+            perc = _f(p["MULT"])
             mva_tipo = "multiplicador_zfm"
         else:
-            perc = self._f(p.get("MVA", 0.0))
+            perc = _f(p.get("MVA", 0.0))
             mva_tipo = "mva_percentual"
 
         fator = 1.0 + (perc / 100.0)  # fator multiplicador (ex.: 1.50 para 50%)
@@ -186,17 +192,17 @@ class MotorCalculo:
         base_st = valor_operacao * fator
 
         # Alíquota ICMS-ST (usamos ALI_INT como “alíquota destino”)
-        aliq_st = self._f(p.get("ALI_INT", 0.18))  # decimal
+        aliq_st = _f(p.get("ALI_INT", 0.18))  # decimal
 
         # ICMS teórico do destino
         icms_teorico_dest = base_st * aliq_st
 
         # ICMS origem (interestadual) “de abatimento” (modelo encerramento)
-        ali_inter = self._f(p.get("ALI_INTER", 0.12))
+        ali_inter = _f(p.get("ALI_INTER", 0.12))
         icms_origem_calc = valor_operacao * ali_inter
 
         # Crédito presumido (se você já usa — senão isso fica 0)
-        cred_perc = self._f(p.get("CRED_PERC", 0.0))
+        cred_perc = _f(p.get("CRED_PERC", 0.0))
         cred_tipo = str(p.get("CRED_TIPO", "SOBRE_DEBITO")).upper()
         if cred_perc > 0:
             credito_presumido = (icms_teorico_dest * cred_perc) if cred_tipo == "SOBRE_DEBITO" else (
