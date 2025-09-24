@@ -1,107 +1,292 @@
 <!doctype html>
 <html lang="pt-br">
-<style>
-    .tbl-wrap { max-height: 70vh; overflow: auto; }
-    table.st-table thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 1; }
-    table.st-table td, table.st-table th { white-space: nowrap; }
-    table.st-table td.desc { max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .num { text-align: right; }
-    .muted { color:#6c757d; }
-</style>
 <head>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width,initial-scale=1"/>
-    <title>Memória de Cálculo ICMS-ST</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"/>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Memória de Cálculo ICMS-ST</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    body { background:#f6f7fb; }
+    .section-title { font-size:.9rem; color:#6c757d; text-transform:uppercase; letter-spacing:.05em; }
+    .stat { border:1px solid #eef0f4; border-radius:.75rem; padding:1rem; background:#fff; }
+    .stat .label { font-size:.8rem; color:#6c757d; }
+    .stat .value { font-weight:700; font-size:1.05rem; }
+    .table thead th { position: sticky; top: 0; background:#f8f9fa; z-index: 1; }
+    .desc { max-width: 460px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .toolbar { border: 1px solid #e9ecef; background:#fff; border-radius:.75rem; padding:.5rem .75rem; }
+    .wrap { max-height: 60vh; overflow:auto; }
+  </style>
 </head>
+<body>
 
-<body class="bg-light">
-<div class="container my-3">
-  <div class="d-flex justify-content-between align-items-center mb-2">
+<div class="container-xxl py-3">
+
+  <!-- Topbar -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0">Memória de Cálculo — Origem {{ uf_origem }} → Destino {{ uf_destino }}</h5>
-    <a href="{{ url_for('index') }}" class="btn btn-light">Voltar</a>
+    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left"></i> Voltar
+    </a>
   </div>
 
-  <style>
-    .st-wrap { max-height: 72vh; overflow:auto; }
-    table.st thead th { position: sticky; top: 0; background:#f8f9fa; z-index:1; }
-    table.st td, table.st th { white-space: nowrap; }
-    table.st td.desc { max-width: 420px; white-space: nowrap; overflow:hidden; text-overflow: ellipsis; }
-  </style>
+  {# ========================== Totais dos grupos ========================== #}
+  {% set ns_st = namespace(icms_des=0, base_st=0, icms_st=0, saldo=0, icms_retido=0, count=0) %}
+  {% set ns_nst = namespace(icms_des=0, base_st=0, icms_st=0, saldo=0, count=0) %}
 
-  <div class="card">
+  {% for l in linhas %}
+    {% if (l.base_st|float > 0) and (l.valor_icms_st|float > 0) %}
+      {% set ns_st.icms_des = ns_st.icms_des + (l.vICMSDeson|float) %}
+      {% set ns_st.base_st  = ns_st.base_st  + (l.base_st|float) %}
+      {% set ns_st.icms_st  = ns_st.icms_st  + (l.valor_icms_st|float) %}
+      {% set ns_st.saldo    = ns_st.saldo    + (l.saldo_devedor|float) %}
+      {% set ns_st.icms_retido = ns_st.icms_retido + (l.icms_retido|float) %}
+      {% set ns_st.count    = ns_st.count + 1 %}
+    {% else %}
+      {% set ns_nst.icms_des = ns_nst.icms_des + (l.vICMSDeson|float) %}
+      {% set ns_nst.base_st  = ns_nst.base_st  + (l.base_st|float) %}
+      {% set ns_nst.icms_st  = ns_nst.icms_st  + (l.valor_icms_st|float) %}
+      {% set ns_nst.saldo    = ns_nst.saldo    + (l.saldo_devedor|float) %}
+      {% set ns_nst.count    = ns_nst.count + 1 %}
+    {% endif %}
+  {% endfor %}
+
+  <!-- Cards de totais (grupo COM ST) -->
+  <div class="card shadow-sm mb-3">
     <div class="card-body">
-      <div class="st-wrap">
-        <table class="table table-sm table-hover align-middle st">
-          <thead class="table-light">
-            <tr>
-              <th>#</th>
-              <th>Cód. Produto</th>
-              <th>Descrição</th>
-              <th>NCM</th>
-              <th>CST</th>
-              <th>CFOP</th>
-              <th class="text-end">Quant.</th>
-              <th class="text-end">Valor Unit.</th>
-              <th class="text-end">Vlr Total Produto</th>
-              <th class="text-end">Frete</th>
-              <th class="text-end">IPI</th>
-              <th class="text-end">Desp. Aces.</th>
-              <th class="text-end">ICMS Desonerado</th>
-              <th class="text-end">Venda c/ Desc. ICMS</th>
-              <th class="text-end">Valor da Operação</th>
-              <th class="text-end">MVA (%)</th>
-              <th class="text-end">Valor Agregado</th>
-              <th class="text-end">Base de Cálc. ST</th>
-              <th class="text-end">Alíquota ICMS-ST</th>
-              <th class="text-end">Valor do ICMS ST</th>
-              <th class="text-end">Valor Saldo Devedor ICMS ST</th>
-              <th class="text-end">Multiplicador SEFAZ</th>
-              <th class="text-end">Valor ICMS Retido</th>
-            </tr>
-          </thead>
-          <tbody class="small">
-            {% for l in linhas %}
-            <tr>
-              <td>{{ l.idx }}</td>
-              <td>{{ l.cProd }}</td>
-              <td class="desc" title="{{ l.xProd }}">{{ l.xProd }}</td>
-              <td>{{ l.ncm }}</td>
-              <td>{{ l.cst }}</td>
-              <td>{{ l.cfop }}</td>
-              <td class="text-end">{{ '%.4f'|format(l.qCom) }}</td>
-              <td class="text-end">{{ '%.2f'|format(l.vUnCom) }}</td>
-              <td class="text-end">{{ '%.2f'|format(l.vProd) }}</td>
-              <td class="text-end">{{ '%.2f'|format(l.vFrete) }}</td>
-              <td class="text-end">{{ '%.2f'|format(l.vIPI) }}</td>
-              <td class="text-end">{{ '%.2f'|format(l.vOutro) }}</td>
-              <td class="text-end">{{ '%.2f'|format(l.vICMSDeson) }}</td>
-              <td class="text-end">{{ '%.2f'|format(l.venda_desc_icms) }}</td>
-              <td class="text-end">{{ '%.2f'|format(l.valor_operacao) }}</td>
-              <td class="text-end">{{ '%.2f'|format(l.mva_percentual) }}</td>
-              <td class="text-end">{{ '%.2f'|format(l.valor_agregado) }}</td>
-              <td class="text-end">{{ '%.2f'|format(l.base_st) }}</td>
-              <td class="text-end">{{ '%.2f%%'|format(l.aliq_st*100) }}</td>
-              <td class="text-end">{{ '%.2f'|format(l.valor_icms_st) }}</td>
-              <td class="text-end">{{ '%.2f'|format(l.saldo_devedor) }}</td>
-              <td class="text-end">{{ '%.2f%%'|format(l.multiplicador*100) }}</td>
-              <td class="text-end fw-semibold">{{ '%.2f'|format(l.icms_retido) }}</td>
-            </tr>
-            {% endfor %}
-            {% if not linhas %}
-              <tr><td colspan="23" class="text-center text-muted">Nenhum item calculado.</td></tr>
-            {% endif %}
-          </tbody>
-          <tfoot class="table-light">
-            <tr>
-              <td colspan="22" class="text-end"><strong>Total ICMS Retido</strong></td>
-              <td class="text-end fw-bold">{{ '%.2f'|format(total_st) }}</td>
-            </tr>
-          </tfoot>
-        </table>
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="section-title mb-0">Totais — Itens com Substituição Tributária ({{ ns_st.count }})</div>
+        <span class="badge text-bg-primary">ICMS Retido Total: R$ {{ '%.2f'|format(ns_st.icms_retido) }}</span>
+      </div>
+      <div class="row g-3">
+        <div class="col-6 col-md-3"><div class="stat"><div class="label">ICMS Desonerado</div><div class="value">R$ {{ '%.2f'|format(ns_st.icms_des) }}</div></div></div>
+        <div class="col-6 col-md-3"><div class="stat"><div class="label">Base de Cálc. ST</div><div class="value">R$ {{ '%.2f'|format(ns_st.base_st) }}</div></div></div>
+        <div class="col-6 col-md-3"><div class="stat"><div class="label">Valor do ICMS ST</div><div class="value">R$ {{ '%.2f'|format(ns_st.icms_st) }}</div></div></div>
+        <div class="col-6 col-md-3"><div class="stat"><div class="label">Saldo Devedor ST</div><div class="value">R$ {{ '%.2f'|format(ns_st.saldo) }}</div></div></div>
       </div>
     </div>
   </div>
-</div>
+
+  <!-- Cards de totais (grupo SEM ST) -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <div class="section-title mb-2">Totais — Itens sem Substituição Tributária ({{ ns_nst.count }})</div>
+      <div class="row g-3">
+        <div class="col-6 col-md-3"><div class="stat"><div class="label">ICMS Desonerado</div><div class="value">R$ {{ '%.2f'|format(ns_nst.icms_des) }}</div></div></div>
+        <div class="col-6 col-md-3"><div class="stat"><div class="label">Base de Cálc. ST</div><div class="value">R$ {{ '%.2f'|format(ns_nst.base_st) }}</div></div></div>
+        <div class="col-6 col-md-3"><div class="stat"><div class="label">Valor do ICMS ST</div><div class="value">R$ {{ '%.2f'|format(ns_nst.icms_st) }}</div></div></div>
+        <div class="col-6 col-md-3"><div class="stat"><div class="label">Saldo Devedor ST</div><div class="value">R$ {{ '%.2f'|format(ns_nst.saldo) }}</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  {# ========================== Abas com 2 tabelas ========================== #}
+  <div class="toolbar mb-3">
+    <ul class="nav nav-pills" role="tablist">
+      <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-st" type="button" role="tab">
+          <i class="bi bi-check2-circle me-1"></i>Com ST
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-semst" type="button" role="tab">
+          <i class="bi bi-slash-circle me-1"></i>Sem ST
+        </button>
+      </li>
+    </ul>
+  </div>
+
+  <div class="tab-content">
+
+    <!-- Tabela: COM ST -->
+    <div class="tab-pane fade show active" id="tab-st" role="tabpanel">
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+            <div class="text-muted">Itens: <strong>{{ ns_st.count }}</strong></div>
+            <div class="input-group input-group-sm" style="max-width:380px">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input id="filtro-st" type="text" class="form-control" placeholder="Filtrar por código, descrição, NCM, CFOP...">
+            </div>
+          </div>
+
+          <div class="wrap">
+            <table class="table table-sm table-hover align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>#</th>
+                  <th>Cód. Produto</th>
+                  <th>Descrição</th>
+                  <th>NCM</th>
+                  <th>CST</th>
+                  <th>CFOP</th>
+                  <th class="text-end">Quant.</th>
+                  <th class="text-end">Valor Unit.</th>
+                  <th class="text-end">Vlr Total Produto</th>
+                  <th class="text-end">Frete</th>
+                  <th class="text-end">IPI</th>
+                  <th class="text-end">Desp. Aces.</th>
+                  <th class="text-end">ICMS Desonerado</th>
+                  <th class="text-end">Venda c/ Desc. ICMS</th>
+                  <th class="text-end">Valor da Operação</th>
+                  <th class="text-end">MVA (%)</th>
+                  <th class="text-end">Valor Agregado</th>
+                  <th class="text-end">Base de Cálc. ST</th>
+                  <th class="text-end">Alíquota ICMS-ST</th>
+                  <th class="text-end">Valor do ICMS ST</th>
+                  <th class="text-end">Saldo Devedor ST</th>
+                  <th class="text-end">Multiplicador SEFAZ</th>
+                  <th class="text-end">ICMS Retido</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-st" class="small">
+                {% for l in linhas
+                     if (l.base_st|float > 0) and (l.valor_icms_st|float > 0) %}
+                  <tr data-filter="{{ (l.cProd ~ ' ' ~ l.xProd ~ ' ' ~ l.ncm ~ ' ' ~ l.cfop)|lower }}">
+                    <td>{{ l.idx }}</td>
+                    <td>{{ l.cProd }}</td>
+                    <td class="desc" title="{{ l.xProd }}">{{ l.xProd }}</td>
+                    <td>{{ l.ncm }}</td>
+                    <td>{{ l.cst }}</td>
+                    <td>{{ l.cfop }}</td>
+                    <td class="text-end">{{ '%.4f'|format(l.qCom) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.vUnCom) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.vProd) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.vFrete) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.vIPI) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.vOutro) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.vICMSDeson) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.venda_desc_icms) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.valor_operacao) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.mva_percentual) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.valor_agregado) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.base_st) }}</td>
+                    <td class="text-end">{{ '%.2f%%'|format(l.aliq_st*100) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.valor_icms_st) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.saldo_devedor) }}</td>
+                    <td class="text-end">{{ '%.2f%%'|format(l.multiplicador*100) }}</td>
+                    <td class="text-end fw-semibold">{{ '%.2f'|format(l.icms_retido) }}</td>
+                  </tr>
+                {% endfor %}
+                {% if ns_st.count == 0 %}
+                  <tr><td colspan="23" class="text-center text-muted">Nenhum item com ST.</td></tr>
+                {% endif %}
+              </tbody>
+              <tfoot class="table-light">
+                <tr>
+                  <td colspan="22" class="text-end"><strong>Total ICMS Retido</strong></td>
+                  <td class="text-end fw-bold">{{ '%.2f'|format(ns_st.icms_retido) }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabela: SEM ST -->
+    <div class="tab-pane fade" id="tab-semst" role="tabpanel">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+            <div class="text-muted">Itens: <strong>{{ ns_nst.count }}</strong></div>
+            <div class="input-group input-group-sm" style="max-width:380px">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input id="filtro-nst" type="text" class="form-control" placeholder="Filtrar por código, descrição, NCM, CFOP...">
+            </div>
+          </div>
+
+          <div class="wrap">
+            <table class="table table-sm table-hover align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>#</th>
+                  <th>Cód. Produto</th>
+                  <th>Descrição</th>
+                  <th>NCM</th>
+                  <th>CST</th>
+                  <th>CFOP</th>
+                  <th class="text-end">Quant.</th>
+                  <th class="text-end">Valor Unit.</th>
+                  <th class="text-end">Vlr Total Produto</th>
+                  <th class="text-end">Frete</th>
+                  <th class="text-end">IPI</th>
+                  <th class="text-end">Desp. Aces.</th>
+                  <th class="text-end">ICMS Desonerado</th>
+                  <th class="text-end">Venda c/ Desc. ICMS</th>
+                  <th class="text-end">Valor da Operação</th>
+                  <th class="text-end">MVA (%)</th>
+                  <th class="text-end">Valor Agregado</th>
+                  <th class="text-end">Base de Cálc. ST</th>
+                  <th class="text-end">Alíquota ICMS-ST</th>
+                  <th class="text-end">Valor do ICMS ST</th>
+                  <th class="text-end">Saldo Devedor ST</th>
+                  <th class="text-end">Multiplicador SEFAZ</th>
+                  <th class="text-end">ICMS Retido</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-nst" class="small">
+                {% for l in linhas
+                     if not ((l.base_st|float > 0) and (l.valor_icms_st|float > 0)) %}
+                  <tr data-filter="{{ (l.cProd ~ ' ' ~ l.xProd ~ ' ' ~ l.ncm ~ ' ' ~ l.cfop)|lower }}">
+                    <td>{{ l.idx }}</td>
+                    <td>{{ l.cProd }}</td>
+                    <td class="desc" title="{{ l.xProd }}">{{ l.xProd }}</td>
+                    <td>{{ l.ncm }}</td>
+                    <td>{{ l.cst }}</td>
+                    <td>{{ l.cfop }}</td>
+                    <td class="text-end">{{ '%.4f'|format(l.qCom) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.vUnCom) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.vProd) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.vFrete) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.vIPI) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.vOutro) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.vICMSDeson) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.venda_desc_icms) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.valor_operacao) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.mva_percentual) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.valor_agregado) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.base_st) }}</td>
+                    <td class="text-end">{{ '%.2f%%'|format(l.aliq_st*100) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.valor_icms_st) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.saldo_devedor) }}</td>
+                    <td class="text-end">{{ '%.2f%%'|format(l.multiplicador*100) }}</td>
+                    <td class="text-end fw-semibold">{{ '%.2f'|format(l.icms_retido) }}</td>
+                  </tr>
+                {% endfor %}
+                {% if ns_nst.count == 0 %}
+                  <tr><td colspan="23" class="text-center text-muted">Nenhum item sem ST.</td></tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-content -->
+
+</div><!-- /container -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  // Filtro separado por tabela
+  function setupFilter(inputId, tbodyId){
+    const input = document.getElementById(inputId);
+    const tbody = document.getElementById(tbodyId);
+    if(!input || !tbody) return;
+    input.addEventListener('input', ()=>{
+      const q = input.value.trim().toLowerCase();
+      for(const tr of tbody.querySelectorAll('tr')){
+        const key = (tr.dataset.filter||'').toLowerCase();
+        tr.style.display = key.includes(q) ? '' : 'none';
+      }
+    });
+  }
+  setupFilter('filtro-st','tbody-st');
+  setupFilter('filtro-nst','tbody-nst');
+</script>
 </body>
 </html>
