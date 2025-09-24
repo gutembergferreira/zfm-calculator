@@ -1,126 +1,445 @@
 <!doctype html>
 <html lang="pt-br">
 <head>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width,initial-scale=1"/>
-    <title>NF-e — Pré-visualização</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"/>
-    <style>
-        .chip { font-size: .75rem; padding: .25rem .5rem; border-radius: 999px; background:#eef2ff; color:#3b5bdb; }
-        .label { color:#6c757d; font-size:.85rem; }
-        .kv { margin-bottom: .25rem; }
-        .kv .k { width: 160px; color:#6c757d; }
-        .kv .v { font-weight: 500; }
-        .muted { color:#6c757d; }
-        .table thead th { white-space: nowrap; }
-    </style>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>NF-e — Pré-visualização</title>
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+  <style>
+    body { background: #f6f7fb; }
+    .chip { font-size:.75rem; padding:.25rem .6rem; border-radius:999px; background:#eef2ff; color:#3b5bdb; }
+    .chip-green { background:#e6fcf5; color:#0c8599; }
+    .chip-red { background:#fff5f5; color:#c92a2a; }
+    .kv .k { width: 180px; color:#6c757d; }
+    .kv .v { font-weight: 600; }
+    .muted { color:#6c757d; }
+    .stat { border:1px solid #eef0f4; border-radius:.75rem; padding:1rem; background:#fff; }
+    .stat .label { font-size:.8rem; color:#6c757d; }
+    .stat .value { font-weight:700; font-size:1.05rem; }
+    .section-title { font-size:.9rem; color:#6c757d; text-transform:uppercase; letter-spacing:.05em; }
+
+    .toolbar-sticky {
+      position: sticky; top: .75rem; z-index: 1020;
+      border: 1px solid #e9ecef; background:#fff; border-radius:.75rem; padding:.5rem;
+    }
+    .table thead th { white-space: nowrap; position: sticky; top: 0; background: #f8f9fa; z-index: 1; }
+    .code { font-family: ui-monospace, Menlo, Consolas, monospace; }
+    .row-detail { background:#fafbff; }
+    .truncate { max-width: 520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  </style>
 </head>
-<body class="bg-light">
-<div class="container py-4">
-    <div class="row">
-        <div class="col-lg-12 mx-auto">
+<body>
 
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h1 class="h5 mb-0">Captura e Auditoria de XML</h1>
-                <div class="d-flex gap-2">
-                    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('index') }}">Voltar</a>
-                </div>
-            </div>
+<div class="container-xxl py-4">
 
-            <div class="card shadow-sm mb-3">
-                <div class="card-body">
-                    <div class="d-flex flex-wrap gap-2 mb-3">
-                        <span class="chip">XML</span>
-                        <span class="chip">DANFE</span>
-                        <span class="chip" style="background:#e6fcf5;color:#0c8599">Conferir</span>
-                        <span class="chip" style="background:#fff5f5;color:#c92a2a">Não conforme</span>
-                    </div>
-
-                    <div class="row g-3">
-                        <div class="col-lg-9">
-                            <div class="kv d-flex"><div class="k">Chave da Nota Fiscal:</div><div class="v">{{ head.chave or "-" }}</div></div>
-                            <div class="kv d-flex"><div class="k">Emitente:</div><div class="v">{{ head.emitente_nome }} - {{ head.emitente_cnpj }}</div></div>
-                            <div class="kv d-flex"><div class="k">Destinatário:</div><div class="v">{{ head.dest_nome }} - {{ head.dest_cnpj }}</div></div>
-                            <div class="kv d-flex"><div class="k">Número / Série:</div><div class="v">{{ head.numero }} / {{ head.serie }}</div></div>
-                        </div>
-                        <div class="col-lg-3">
-                            <div class="text-end">
-                                <div class="label">Data Emissão</div>
-                                <span class="chip" style="background:#ffe3e3;color:#d9480f">{{ head.dhEmi or "-" }}</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card shadow-sm mb-3">
-                <div class="card-body">
-                    <h2 class="h6">Movimentação</h2>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="kv d-flex"><div class="k">Origem:</div><div class="v">→ {{ head.uf_origem or "-" }}</div></div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="kv d-flex"><div class="k">Destino:</div><div class="v">↗ {{ head.uf_destino or "-" }}</div></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card shadow-sm mb-4">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h2 class="h6 mb-0">Produtos</h2>
-                        <form method="post" action="{{ url_for('calcular') }}" class="d-flex gap-2">
-                            <input type="hidden" name="xml_b64" value="{{ xml_b64 }}">
-                            <input type="hidden" name="usar_multiplicador" value="on">
-                            <input type="text" class="form-control form-control-sm" name="uf_origem" value="{{ uf_origem }}" style="max-width:80px" title="UF Origem">
-                            <input type="text" class="form-control form-control-sm" name="uf_destino" value="{{ uf_destino }}" style="max-width:80px" title="UF Destino">
-                            <button class="btn btn-primary btn-sm" type="submit">Calcular ST</button>
-                        </form>
-                    </div>
-
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped align-middle">
-                            <thead class="table-light">
-                            <tr>
-                                <th>Código</th>
-                                <th>Descrição</th>
-                                <th>NCM</th>
-                                <th>CST</th>
-                                <th>CFOP</th>
-                                <th>Unid.</th>
-                                <th class="text-end">Vlr Unitário</th>
-                                <th class="text-end">Qtde</th>
-                                <th class="text-end">Vlr Bruto</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {% for it in itens %}
-                            <tr>
-                                <td>{{ it.cProd }}</td>
-                                <td class="text-truncate" style="max-width:420px">{{ it.xProd }}</td>
-                                <td>{{ it.ncm }}</td>
-                                <td>{{ it.cst }}</td>
-                                <td>{{ it.cfop }}</td>
-                                <td>{{ it.uCom or it.uTrib or "-" }}</td>
-                                <td class="text-end">{{ "%.4f"|format(it.vUnCom) }}</td>
-                                <td class="text-end">{{ "%.4f"|format(it.qCom) }}</td>
-                                <td class="text-end">{{ "%.2f"|format(it.vProd) }}</td>
-                            </tr>
-                            {% endfor %}
-                            </tbody>
-                            <div class="small text-muted px-3 pb-2">Itens: {{ itens|length }}</div>
-                        </table>
-                    </div>
-
-                    <div class="muted small">Itens: {{ produtos|length }}</div>
-                </div>
-            </div>
-
-            <!-- Se quiser, aqui dá pra adicionar blocos de Eventos / Autorização / Totais -->
-        </div>
+  <!-- Header / Actions -->
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h5 mb-0">Captura e Auditoria de XML</h1>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('index') }}"><i class="bi bi-arrow-left"></i> Voltar</a>
     </div>
-</div>
+  </div>
+
+  <!-- Chips -->
+  <div class="mb-3 d-flex flex-wrap gap-2">
+    <span class="chip"><i class="bi bi-filetype-xml me-1"></i>XML</span>
+    <span class="chip"><i class="bi bi-file-earmark-text me-1"></i>DANFE</span>
+    <span class="chip chip-green"><i class="bi bi-shield-check me-1"></i>Conferir</span>
+    <span class="chip chip-red"><i class="bi bi-x-octagon me-1"></i>Não conforme</span>
+  </div>
+
+  <!-- Overview card -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-lg-8">
+          <div class="row">
+            <div class="col-12 mb-2">
+              <div class="section-title">Identificação</div>
+            </div>
+            <div class="col-md-6">
+              <div class="kv d-flex"><div class="k">Chave da Nota Fiscal</div><div class="v code">{{ head.chave or head.chNFe or "-" }}</div></div>
+              <div class="kv d-flex"><div class="k">Natureza da Operação</div><div class="v">{{ head.natOp or "-" }}</div></div>
+            </div>
+            <div class="col-md-6">
+              <div class="kv d-flex"><div class="k">Modelo / Série / Número</div><div class="v">{{ head.modelo or head.ide.mod }} / {{ head.serie or head.ide.serie }} / {{ head.numero or head.ide.nNF }}</div></div>
+              <div class="kv d-flex"><div class="k">Emissão / Saída</div><div class="v">{{ head.dhEmi or head.ide.dhEmi }} / {{ head.dhSaiEnt or "-" }}</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="section-title mb-2">Movimentação</div>
+          <div class="row g-2">
+            <div class="col-12">
+              <div class="kv d-flex"><div class="k">Origem</div><div class="v">→ {{ head.uf_origem or "SP" }}</div></div>
+            </div>
+            <div class="col-12">
+              <div class="kv d-flex"><div class="k">Destino</div><div class="v">↗ {{ head.uf_destino or "AM" }}</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- collapses: Emitente / Destinatário -->
+      <div class="mt-3">
+        <div class="accordion" id="acc-partes">
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#emitente">
+                <i class="bi bi-building me-2"></i> Emitente
+              </button>
+            </h2>
+            <div id="emitente" class="accordion-collapse collapse show" data-bs-parent="#acc-partes">
+              <div class="accordion-body">
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="kv d-flex"><div class="k">Nome</div><div class="v">{{ head.emitente_nome or "-" }}</div></div>
+                    <div class="kv d-flex"><div class="k">CNPJ</div><div class="v">{{ head.emitente_cnpj or "-" }}</div></div>
+                    <div class="kv d-flex"><div class="k">IE</div><div class="v">{{ head.emitente_ie or "-" }}</div></div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="kv d-flex"><div class="k">Endereço</div><div class="v">{{ head.emitente_endereco or "-" }}</div></div>
+                    <div class="kv d-flex"><div class="k">Município / UF</div><div class="v">{{ head.emitente_municipio or "-" }} / {{ head.emitente_uf or "-" }}</div></div>
+                    <div class="kv d-flex"><div class="k">CEP</div><div class="v">{{ head.emitente_cep or "-" }}</div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#destinatario">
+                <i class="bi bi-geo-alt me-2"></i> Destinatário
+              </button>
+            </h2>
+            <div id="destinatario" class="accordion-collapse collapse" data-bs-parent="#acc-partes">
+              <div class="accordion-body">
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="kv d-flex"><div class="k">Nome</div><div class="v">{{ head.dest_nome or "-" }}</div></div>
+                    <div class="kv d-flex"><div class="k">CNPJ</div><div class="v">{{ head.dest_cnpj or "-" }}</div></div>
+                    <div class="kv d-flex"><div class="k">IE / ISUF</div><div class="v">{{ head.dest_ie or "-" }} {% if head.dest_isuf %}/ {{ head.dest_isuf }}{% endif %}</div></div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="kv d-flex"><div class="k">Endereço</div><div class="v">{{ head.dest_endereco or "-" }}</div></div>
+                    <div class="kv d-flex"><div class="k">Município / UF</div><div class="v">{{ head.dest_municipio or "-" }} / {{ head.dest_uf or "-" }}</div></div>
+                    <div class="kv d-flex"><div class="k">CEP</div><div class="v">{{ head.dest_cep or "-" }}</div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /accordion -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Sticky toolbar: Calcular ST + abas -->
+  <div class="toolbar-sticky mb-3">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <form method="post" action="{{ url_for('calcular') }}" class="d-flex flex-wrap align-items-center gap-2">
+        <input type="hidden" name="xml_b64" value="{{ xml_b64 }}">
+        <input type="hidden" name="usar_multiplicador" value="on">
+        <label class="form-label mb-0 me-1">Origem</label>
+        <input type="text" class="form-control form-control-sm" name="uf_origem" value="{{ head.uf_origem or uf_origem or 'SP' }}" style="width:70px">
+        <label class="form-label mb-0 ms-2 me-1">Destino</label>
+        <input type="text" class="form-control form-control-sm" name="uf_destino" value="{{ head.uf_destino or uf_destino or 'AM' }}" style="width:70px">
+        <button class="btn btn-primary btn-sm ms-2" type="submit"><i class="bi bi-calculator me-1"></i>Calcular ST</button>
+      </form>
+
+      <div class="vr mx-2"></div>
+
+      <ul class="nav nav-pills" id="previewTabs" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-produtos" type="button" role="tab"><i class="bi bi-box-seam me-1"></i>Produtos</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-totais" type="button" role="tab"><i class="bi bi-cash-coin me-1"></i>Totais</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-transp" type="button" role="tab"><i class="bi bi-truck me-1"></i>Transporte</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-cobr" type="button" role="tab"><i class="bi bi-receipt me-1"></i>Cobrança</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-obs" type="button" role="tab"><i class="bi bi-card-text me-1"></i>Observações</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-xml" type="button" role="tab"><i class="bi bi-code-slash me-1"></i>XML bruto</button></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Tabs content -->
+  <div class="tab-content">
+
+    <!-- Produtos -->
+    <div class="tab-pane fade show active" id="tab-produtos" role="tabpanel">
+      <div class="card shadow-sm">
+        <div class="card-body">
+
+          <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-2">
+            <div class="muted">Itens: <strong>{{ itens|length }}</strong></div>
+            <div class="d-flex flex-wrap gap-2">
+              <div class="input-group input-group-sm" style="width:320px">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input id="filtro" type="text" class="form-control" placeholder="Filtrar por código, descrição, NCM, CFOP...">
+              </div>
+              <div class="btn-group btn-group-sm" role="group" aria-label="col toggles">
+                <button class="btn btn-outline-secondary" data-col-toggle="ean">EAN</button>
+                <button class="btn btn-outline-secondary" data-col-toggle="cest">CEST</button>
+                <button class="btn btn-outline-secondary" data-col-toggle="frete">Frete</button>
+                <button class="btn btn-outline-secondary" data-col-toggle="deson">ICMS Deson.</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle" id="tabela-itens">
+              <thead class="table-light">
+              <tr>
+                <th style="width:34px;"></th>
+                <th>Código</th>
+                <th>Descrição</th>
+                <th class="col-ean d-none">EAN</th>
+                <th>NCM</th>
+                <th class="col-cest d-none">CEST</th>
+                <th>CST</th>
+                <th>CFOP</th>
+                <th>Un.</th>
+                <th class="text-end">Vlr Unit.</th>
+                <th class="text-end">Qtde</th>
+                <th class="text-end">Vlr Bruto</th>
+                <th class="text-end col-frete d-none">Frete</th>
+                <th class="text-end col-deson d-none">ICMS Deson.</th>
+              </tr>
+              </thead>
+              <tbody id="tbody-itens">
+              {% for it in itens %}
+                {% set rowkey = 'row' ~ loop.index %}
+                <tr data-filter="{{ (it.cProd ~ ' ' ~ it.xProd ~ ' ' ~ it.ncm ~ ' ' ~ it.cfop)|lower }}">
+                  <td>
+                    <button class="btn btn-sm btn-link text-decoration-none" data-bs-toggle="collapse" data-bs-target="#{{ rowkey }}" aria-expanded="false" title="Detalhes">
+                      <i class="bi bi-caret-down-square"></i>
+                    </button>
+                  </td>
+                  <td class="code">{{ it.cProd }}</td>
+                  <td class="truncate" title="{{ it.xProd }}">{{ it.xProd }}</td>
+                  <td class="col-ean d-none">{{ it.cEAN or it.cEANTrib or "-" }}</td>
+                  <td>{{ it.ncm }}</td>
+                  <td class="col-cest d-none">{{ it.cest or "-" }}</td>
+                  <td>{{ it.cst }}</td>
+                  <td>{{ it.cfop }}</td>
+                  <td>{{ it.uCom or it.uTrib or "-" }}</td>
+                  <td class="text-end">{{ "%.4f"|format(it.vUnCom) }}</td>
+                  <td class="text-end">{{ "%.4f"|format(it.qCom) }}</td>
+                  <td class="text-end">{{ "%.2f"|format(it.vProd) }}</td>
+                  <td class="text-end col-frete d-none">{{ "%.2f"|format(it.vFrete or 0) }}</td>
+                  <td class="text-end col-deson d-none">{{ "%.2f"|format(it.vICMSDeson or 0) }}</td>
+                </tr>
+                <!-- detalhe colapsável -->
+                <tr class="collapse row-detail" id="{{ rowkey }}">
+                  <td></td>
+                  <td colspan="13">
+                    <div class="row g-3">
+                      <div class="col-6 col-md-3"><div class="stat"><div class="label">Vlr IPI</div><div class="value">R$ {{ "%.2f"|format(it.vIPI or 0) }}</div></div></div>
+                      <div class="col-6 col-md-3"><div class="stat"><div class="label">Vlr Outros</div><div class="value">R$ {{ "%.2f"|format(it.vOutro or 0) }}</div></div></div>
+                      <div class="col-6 col-md-3"><div class="stat"><div class="label">Frete rateado</div><div class="value">R$ {{ "%.2f"|format(it.vFrete or 0) }}</div></div></div>
+                      <div class="col-6 col-md-3"><div class="stat"><div class="label">ICMS Deson.</div><div class="value">R$ {{ "%.2f"|format(it.vICMSDeson or 0) }}</div></div></div>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="text-end small text-muted mt-2">Dica: clique na seta à esquerda do item para ver os detalhes.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Totais -->
+    <div class="tab-pane fade" id="tab-totais" role="tabpanel">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-6 col-md-3"><div class="stat"><div class="label">Produtos</div><div class="value">R$ {{ "%.2f"|format(totais.vProd if totais and totais.vProd is not none else 0) }}</div></div></div>
+            <div class="col-6 col-md-3"><div class="stat"><div class="label">Frete</div><div class="value">R$ {{ "%.2f"|format(totais.vFrete if totais and totais.vFrete is not none else 0) }}</div></div></div>
+            <div class="col-6 col-md-3"><div class="stat"><div class="label">IPI</div><div class="value">R$ {{ "%.2f"|format(totais.vIPI if totais and totais.vIPI is not none else 0) }}</div></div></div>
+            <div class="col-6 col-md-3"><div class="stat"><div class="label">Descontos</div><div class="value">R$ {{ "%.2f"|format(totais.vDesc if totais and totais.vDesc is not none else 0) }}</div></div></div>
+            <div class="col-6 col-md-3"><div class="stat"><div class="label">Outros</div><div class="value">R$ {{ "%.2f"|format(totais.vOutro if totais and totais.vOutro is not none else 0) }}</div></div></div>
+            <div class="col-6 col-md-3"><div class="stat"><div class="label">ICMS Desonerado</div><div class="value">R$ {{ "%.2f"|format(totais.vICMSDeson if totais and totais.vICMSDeson is not none else 0) }}</div></div></div>
+            <div class="col-6 col-md-3"><div class="stat"><div class="label">Valor Total NF</div><div class="value">R$ {{ "%.2f"|format(totais.vNF if totais and totais.vNF is not none else 0) }}</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Transporte -->
+    <div class="tab-pane fade" id="tab-transp" role="tabpanel">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-lg-6">
+              <div class="section-title mb-2">Transportadora</div>
+              <div class="kv d-flex"><div class="k">Nome</div><div class="v">{{ transp.transportadora_nome or "-" }}</div></div>
+              <div class="kv d-flex"><div class="k">CNPJ/CPF</div><div class="v">{{ transp.transportadora_cnpj or "-" }}</div></div>
+              <div class="kv d-flex"><div class="k">UF</div><div class="v">{{ transp.uf or "-" }}</div></div>
+              <div class="kv d-flex"><div class="k">Modalidade de Frete</div><div class="v">{{ transp.modFrete or "-" }}</div></div>
+            </div>
+            <div class="col-lg-6">
+              <div class="section-title mb-2">Volumes</div>
+              <div class="kv d-flex"><div class="k">Qtd / Espécie</div><div class="v">{{ transp.qVol or "-" }} / {{ transp.esp or "-" }}</div></div>
+              <div class="kv d-flex"><div class="k">Marca / Nº</div><div class="v">{{ transp.marca or "-" }} / {{ transp.nVol or "-" }}</div></div>
+              <div class="kv d-flex"><div class="k">Peso Líquido / Bruto</div><div class="v">{{ transp.pesoL or "0" }} kg / {{ transp.pesoB or "0" }} kg</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cobrança -->
+    <div class="tab-pane fade" id="tab-cobr" role="tabpanel">
+      <div class="row g-3">
+        <div class="col-lg-5">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <div class="section-title mb-2">Fatura</div>
+              <div class="kv d-flex"><div class="k">Número</div><div class="v">{{ cobr.nFat or "-" }}</div></div>
+              <div class="kv d-flex"><div class="k">Valor Original</div><div class="v">R$ {{ "%.2f"|format(cobr.vOrig or 0) }}</div></div>
+              <div class="kv d-flex"><div class="k">Desconto</div><div class="v">R$ {{ "%.2f"|format(cobr.vDesc or 0) }}</div></div>
+              <div class="kv d-flex"><div class="k">Valor Líquido</div><div class="v">R$ {{ "%.2f"|format(cobr.vLiq or 0) }}</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-7">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="section-title mb-2">Duplicatas</div>
+                <button class="btn btn-outline-secondary btn-sm" id="btnDupCsv"><i class="bi bi-download me-1"></i>CSV</button>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                  <thead class="table-light">
+                    <tr><th>Nº</th><th class="text-end">Vencimento</th><th class="text-end">Valor</th></tr>
+                  </thead>
+                  <tbody id="tbDup">
+                    {% if duplicatas and duplicatas|length > 0 %}
+                      {% for d in duplicatas %}
+                        <tr><td>{{ d.nDup }}</td><td class="text-end">{{ d.dVenc }}</td><td class="text-end">R$ {{ "%.2f"|format(d.vDup or 0) }}</td></tr>
+                      {% endfor %}
+                    {% else %}
+                      <tr><td colspan="3" class="text-center text-muted">Sem duplicatas</td></tr>
+                    {% endif %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Observações -->
+    <div class="tab-pane fade" id="tab-obs" role="tabpanel">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          {% if inf_cpl %}
+            <pre class="mb-0" style="white-space:pre-wrap">{{ inf_cpl }}</pre>
+          {% else %}
+            <div class="text-muted">Sem observações adicionais.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- XML -->
+    <div class="tab-pane fade" id="tab-xml" role="tabpanel">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="section-title mb-0">XML bruto</div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-outline-secondary btn-sm" id="btnCopyXml"><i class="bi bi-clipboard"></i></button>
+              <a id="btnDownloadXml" class="btn btn-outline-primary btn-sm" download="nfe.xml"><i class="bi bi-download me-1"></i>Baixar</a>
+            </div>
+          </div>
+          <pre id="xmlRaw" class="bg-light p-3 rounded small" style="white-space:pre-wrap; max-height:60vh; overflow:auto"></pre>
+          <input type="hidden" id="xml_b64" value="{{ xml_b64 }}">
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-content -->
+
+</div><!-- /container -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  // -------- filtro de itens ----------
+  const filtro = document.getElementById('filtro');
+  const tbody = document.getElementById('tbody-itens');
+  if (filtro && tbody) {
+    filtro.addEventListener('input', () => {
+      const q = filtro.value.trim().toLowerCase();
+      for (const tr of tbody.querySelectorAll('tr')) {
+        if (!tr.dataset.filter) continue; // ignora linhas de detalhe
+        tr.style.display = tr.dataset.filter.includes(q) ? '' : 'none';
+        const next = tr.nextElementSibling;
+        if (next && next.classList.contains('row-detail')) {
+          next.style.display = tr.style.display;
+        }
+      }
+    });
+  }
+
+  // -------- toggles de colunas ----------
+  document.querySelectorAll('[data-col-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-col-toggle');
+      const th = document.querySelector('th.col-' + key);
+      document.querySelectorAll('.col-' + key).forEach(el => el.classList.toggle('d-none'));
+      btn.classList.toggle('active');
+    });
+  });
+
+  // -------- duplicatas -> CSV ----------
+  const btnDupCsv = document.getElementById('btnDupCsv');
+  if (btnDupCsv) {
+    btnDupCsv.addEventListener('click', () => {
+      const rows = [['nDup','dVenc','vDup']];
+      document.querySelectorAll('#tbDup tr').forEach(tr => {
+        const tds = tr.querySelectorAll('td');
+        if (tds.length === 3) {
+          rows.push([tds[0].innerText.trim(), tds[1].innerText.trim(), tds[2].innerText.replace('R$','').trim()]);
+        }
+      });
+      const csv = rows.map(r => r.map(x => `"${(x||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'duplicatas.csv'; a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  // -------- XML: decodificar base64 & copiar/baixar ----------
+  (function showXml(){
+    const b64 = document.getElementById('xml_b64')?.value || '';
+    if (!b64) return;
+    try {
+      const xmlText = atob(b64);
+      const pre = document.getElementById('xmlRaw');
+      pre.textContent = xmlText;
+
+      const dl = document.getElementById('btnDownloadXml');
+      const blob = new Blob([xmlText], {type:'application/xml'});
+      const url = URL.createObjectURL(blob);
+      dl.href = url;
+
+      document.getElementById('btnCopyXml')?.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(xmlText); } catch(e) {}
+      });
+    } catch(e) { console.error('Falha ao decodificar XML b64', e); }
+  })();
+</script>
 </body>
 </html>

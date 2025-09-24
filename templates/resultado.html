@@ -16,83 +16,92 @@
 </head>
 
 <body class="bg-light">
-<div class="container py-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h5 mb-0">Memória de Cálculo — Origem {{ uf_origem }} → Destino {{ uf_destino }}</h1>
-        <a href="{{ url_for('index') }}" class="btn btn-sm btn-outline-secondary">Voltar</a>
-    </div>
+<div class="container my-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h5 class="mb-0">Memória de Cálculo — Origem {{ uf_origem }} → Destino {{ uf_destino }}</h5>
+    <a href="{{ url_for('index') }}" class="btn btn-light">Voltar</a>
+  </div>
 
-    <div class="card shadow-sm mb-3">
-        <div class="card-body">
-            <div class="tbl-wrap">
-                <table class="table table-sm table-striped table-hover align-middle st-table">
-                    <thead class="table-light">
-                    <tr>
-                        <th>#</th><th><b>Cód. Produto</b></th><th><b>Descrição</b></th>
-                        <th>NCM</th><th>CST</th><th>CFOP</th>
-                        <th class="num">Quant.</th>
-                        <th class="num">Valor Unit.</th>
-                        <th class="num">Vlr Total Produto</th>
-                        <th class="num">Frete</th>
-                        <th class="num">IPI</th>
-                        <th class="num">Desp. Aces.</th>
-                        <th class="num">ICMS Deson.</th>
-                        <th class="num">Venda c/ Desc. ICMS</th>
-                        <th class="num">Valor da Operação</th>
-                        <th>MVA Tipo</th>
-                        <th class="num">MVA (%)</th>
-                        <th class="num">Valor Agregado</th>
-                        <th class="num">Base ST</th>
-                        <th class="num">Alíquota ST</th>
-                        <th class="num">ICMS Teórico</th>
-                        <th class="num">ICMS Origem (calc)</th>
-                        <th class="num"><b>ICMS-ST</b></th>
-                        <th class="num">Saldo Devedor</th>
-                        <th class="num">Mult. SEFAZ</th>
-                        <th class="num">ICMS Retido</th>
-                    </tr>
-                    </thead>
-                    <tbody class="small">
-                    {% for l in linhas %}
-                    <tr>
-                        <td>{{ loop.index }}</td>
-                        <td>{{ l.cod }}</td>
-                        <td class="desc" title="{{ l.desc }}">{{ l.desc }}</td>
-                        <td>{{ l.ncm }}</td>
-                        <td>{{ l.cst }}</td>
-                        <td>{{ l.cfop }}</td>
-                        <td class="num">{{ "%.4f"|format(l.quant) }}</td>
-                        <td class="num">{{ "%.2f"|format(l.vun) }}</td>
-                        <td class="num">{{ "%.2f"|format(l.vprod) }}</td>
-                        <td class="num">{{ "%.2f"|format(l.frete) }}</td>
-                        <td class="num">{{ "%.2f"|format(l.ipi) }}</td>
-                        <td class="num">{{ "%.2f"|format(l.vout) }}</td>
-                        <td class="num">{{ "%.2f"|format(l.icms_deson) }}</td>
-                        <td class="num">{{ "%.2f"|format(l.venda_desc_icms) }}</td>
-                        <td class="num">{{ "%.2f"|format(l.valor_oper) }}</td>
-                        <td>{{ l.mva_tipo }}</td>
-                        <td class="num">{{ "%.2f"|format(l.mva_percent) }}</td>
-                        <td class="num">{{ "%.2f"|format(l.valor_agregado) }}</td>
-                        <td class="num">{{ "%.2f"|format(l.base_st) }}</td>
-                        <td class="num">{{ "%.2f"|format(l.aliq_st * 100) }}%</td>
-                        <td class="num">{{ "%.2f"|format(l.icms_teorico_dest) }}</td>
-                        <td class="num">{{ "%.2f"|format(l.icms_origem_calc) }}</td>
-                        <td class="num"><b>{{ "%.2f"|format(l.icms_st) }}</b></td>
-                        <td class="num">{{ "%.2f"|format(l.saldo_devedor) }}</td>
-                        <td class="num">{{ "%.2f"|format(l.mult_sefaz * 100) }}%</td>
-                        <td class="num">{{ "%.2f"|format(l.icms_retido) }}</td>
-                    </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+  <style>
+    .st-wrap { max-height: 72vh; overflow:auto; }
+    table.st thead th { position: sticky; top: 0; background:#f8f9fa; z-index:1; }
+    table.st td, table.st th { white-space: nowrap; }
+    table.st td.desc { max-width: 420px; white-space: nowrap; overflow:hidden; text-overflow: ellipsis; }
+  </style>
 
-            <form method="post" action="{{ url_for('exportar_pdf') }}" class="mt-3">
-                <input type="hidden" name="data" value='{{ payload_json|safe }}'>
-                <button type="submit" class="btn btn-primary">Exportar PDF</button>
-            </form>
-        </div>
+  <div class="card">
+    <div class="card-body">
+      <div class="st-wrap">
+        <table class="table table-sm table-hover align-middle st">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Cód. Produto</th>
+              <th>Descrição</th>
+              <th>NCM</th>
+              <th>CST</th>
+              <th>CFOP</th>
+              <th class="text-end">Quant.</th>
+              <th class="text-end">Valor Unit.</th>
+              <th class="text-end">Vlr Total Produto</th>
+              <th class="text-end">Frete</th>
+              <th class="text-end">IPI</th>
+              <th class="text-end">Desp. Aces.</th>
+              <th class="text-end">ICMS Desonerado</th>
+              <th class="text-end">Venda c/ Desc. ICMS</th>
+              <th class="text-end">Valor da Operação</th>
+              <th class="text-end">MVA (%)</th>
+              <th class="text-end">Valor Agregado</th>
+              <th class="text-end">Base de Cálc. ST</th>
+              <th class="text-end">Alíquota ICMS-ST</th>
+              <th class="text-end">Valor do ICMS ST</th>
+              <th class="text-end">Valor Saldo Devedor ICMS ST</th>
+              <th class="text-end">Multiplicador SEFAZ</th>
+              <th class="text-end">Valor ICMS Retido</th>
+            </tr>
+          </thead>
+          <tbody class="small">
+            {% for l in linhas %}
+            <tr>
+              <td>{{ l.idx }}</td>
+              <td>{{ l.cProd }}</td>
+              <td class="desc" title="{{ l.xProd }}">{{ l.xProd }}</td>
+              <td>{{ l.ncm }}</td>
+              <td>{{ l.cst }}</td>
+              <td>{{ l.cfop }}</td>
+              <td class="text-end">{{ '%.4f'|format(l.qCom) }}</td>
+              <td class="text-end">{{ '%.2f'|format(l.vUnCom) }}</td>
+              <td class="text-end">{{ '%.2f'|format(l.vProd) }}</td>
+              <td class="text-end">{{ '%.2f'|format(l.vFrete) }}</td>
+              <td class="text-end">{{ '%.2f'|format(l.vIPI) }}</td>
+              <td class="text-end">{{ '%.2f'|format(l.vOutro) }}</td>
+              <td class="text-end">{{ '%.2f'|format(l.vICMSDeson) }}</td>
+              <td class="text-end">{{ '%.2f'|format(l.venda_desc_icms) }}</td>
+              <td class="text-end">{{ '%.2f'|format(l.valor_operacao) }}</td>
+              <td class="text-end">{{ '%.2f'|format(l.mva_percentual) }}</td>
+              <td class="text-end">{{ '%.2f'|format(l.valor_agregado) }}</td>
+              <td class="text-end">{{ '%.2f'|format(l.base_st) }}</td>
+              <td class="text-end">{{ '%.2f%%'|format(l.aliq_st*100) }}</td>
+              <td class="text-end">{{ '%.2f'|format(l.valor_icms_st) }}</td>
+              <td class="text-end">{{ '%.2f'|format(l.saldo_devedor) }}</td>
+              <td class="text-end">{{ '%.2f%%'|format(l.multiplicador*100) }}</td>
+              <td class="text-end fw-semibold">{{ '%.2f'|format(l.icms_retido) }}</td>
+            </tr>
+            {% endfor %}
+            {% if not linhas %}
+              <tr><td colspan="23" class="text-center text-muted">Nenhum item calculado.</td></tr>
+            {% endif %}
+          </tbody>
+          <tfoot class="table-light">
+            <tr>
+              <td colspan="22" class="text-end"><strong>Total ICMS Retido</strong></td>
+              <td class="text-end fw-bold">{{ '%.2f'|format(total_st) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
+  </div>
 </div>
 </body>
 </html>
