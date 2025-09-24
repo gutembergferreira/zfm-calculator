@@ -74,34 +74,14 @@ def preview():
 
     nfe = NFEXML(xml_bytes)
 
-    # Cabeçalho e itens (mantém compatível com seu template atual)
-    head = nfe.header()            # pode ser dict ou objeto simples
-    itens = nfe.itens()            # lista de objetos com cProd, xProd, NCM etc.
+    head   = nfe.header()
+    itens  = nfe.itens()
+    totais = nfe.totais()
+    transp = nfe.transporte()
+    cobr   = nfe.cobranca()
+    dups   = nfe.duplicatas()
+    obs    = nfe.inf_adic()
 
-    # Blocos extras (totais, transporte, cobrança, duplicatas, observações)
-    # Os getters abaixo são usados só se existirem no seu NFEXML;
-    # caso não existam, caem num default seguro.
-    def _get(callable_name, default):
-        try:
-            func = getattr(nfe, callable_name, None)
-            return func() if callable(func) else default
-        except Exception:
-            return default
-
-    totais      = _get("totais", {})
-    transp      = _get("transporte", {})
-    cobr        = _get("cobranca", {})
-    duplicatas  = _get("duplicatas", [])
-    inf_cpl     = _get("inf_adic", "")
-
-    # UFs para já preencher a barrinha do "Calcular ST"
-    # (usa o que vier do header; se não vier, usa defaults)
-    uf_origem  = getattr(head, "uf_origem", None) if hasattr(head, "uf_origem") else (head.get("uf_origem") if isinstance(head, dict) else None)
-    uf_destino = getattr(head, "uf_destino", None) if hasattr(head, "uf_destino") else (head.get("uf_destino") if isinstance(head, dict) else None)
-    uf_origem  = (uf_origem or "SP").upper()
-    uf_destino = (uf_destino or "AM").upper()
-
-    # XML em base64 para a próxima etapa (Calcular ST)
     xml_b64 = base64.b64encode(xml_bytes).decode("ascii")
 
     return render_template(
@@ -109,15 +89,14 @@ def preview():
         head=head,
         itens=itens,
         itens_count=len(itens),
-        uf_origem=uf_origem,
-        uf_destino=uf_destino,
         totais=totais,
         transp=transp,
         cobr=cobr,
-        duplicatas=duplicatas,
-        inf_cpl=inf_cpl,
+        duplicatas=dups,
+        inf_cpl=obs,
         xml_b64=xml_b64
     )
+
 
 
 @app.route("/calcular", methods=["POST"])
@@ -127,103 +106,99 @@ def calcular():
         flash("Não foi possível recuperar o XML.")
         return redirect(url_for("index"))
 
-    uf_origem = request.form.get("uf_origem", "SP")
-    uf_destino = request.form.get("uf_destino", "AM")
-
     nfe = NFEXML(xml_bytes)
     itens = nfe.itens()
+    header = nfe.header()
+    uf_origem = (header.get("uf_origem") or "SP").upper()
+    uf_destino = (header.get("uf_destino") or "AM").upper()
 
     linhas = []
     total_st = 0.0
 
     for it in itens:
         r = motor.calcula_st(it, uf_origem, uf_destino, usar_multiplicador=True)
+        m = r.memoria
 
-        p = r.memoria.get("parametros", {})
-        ali_int = float(p.get("ALI_INT", 0.18))
+        qCom   = float(it.qCom)
+        vUnCom = float(it.vUnCom)
+        vProd  = float(it.vProd)
+        vFrete = float(it.vFrete)
+        vIPI   = float(it.vIPI)
+        vOutro = float(it.vOutro)
+        vICMSDeson_xml = float(it.vICMSDeson)
 
-        # <<< aceita as duas grafias
-        mva_percent = float(
-            r.memoria.get("MARGEM_DE_VALOR_AGREGADO_MVA",
-                          r.memoria.get("MARGEM DE VALOR AGREGADO - MVA", 0.0))
-        )
-        venda_desc = float(
-            r.memoria.get("venda_desc_icms",
-                          r.memoria.get("VALOR DA VENDA COM DESCONTO DE ICMS", 0.0))
-        )
-        base_st = float(
-            r.memoria.get("BASE_ST",
-                          r.memoria.get("BASE DE CÁLCULO SUBSTITUIÇÃO TRIBUTÁRIA", 0.0))
-        )
-        valor_agregado = float(
-            r.memoria.get("VALOR_AGREGADO",
-                          r.memoria.get("VALOR AGREGADO", 0.0))
-        )
-        valor_icms_st = float(
-            r.memoria.get("VALOR_ICMS_ST",
-                          r.memoria.get("VALOR DO ICMS ST", 0.0))
-        )
-        saldo_devedor = float(
-            r.memoria.get("SALDO_DEVEDOR_ST",
-                          r.memoria.get("VALOR SALDO DEVEDOR ICMS ST", 0.0))
-        )
+        vICMSDeson = float(m.get("ICMS DESONERADO", vICMSDeson_xml))
 
-        # multiplicador sem truncar (virá como 0.1947)
-        mult = float(
-            r.memoria.get("MULT_SEFAZ",
-                          r.memoria.get("MULTIPLICADOR SEFAZ", p.get("ALI_INTER", 0.0)))
-        )
+        venda_desc_icms = float(m.get("VALOR DA VENDA COM DESCONTO DE ICMS", m.get("venda_desc_icms", 0.0)))
+        valor_oper = float(m.get("VALOR DA OPERAÇÃO", venda_desc_icms))
+        mva_percent = float(m.get("MARGEM_DE_VALOR_AGREGADO_MVA", m.get("mva_percentual_aplicado", 0.0)))
+        valor_agregado = float(m.get("VALOR AGREGADO", 0.0))
+        base_st = float(m.get("BASE_ST", m.get("BASE DE CÁLCULO SUBSTITUIÇÃO TRIBUTÁRIA", 0.0)))
+        aliq_st = float(m.get("ALÍQUOTA ICMS-ST", m.get("aliq_interna", 0.0)))
+        icms_teorico_dest = float(m.get("icms_teorico_dest", 0.0))
+        icms_origem_calc  = float(m.get("icms_origem_calc", vICMSDeson))
+        icms_st = float(m.get("VALOR_ICMS_ST", 0.0))
+        saldo_devedor = float(m.get("SALDO_DEVEDOR_ST", m.get("VALOR SALDO DEVEDOR ICMS ST", 0.0)))
+        mult_sefaz = float(m.get("MULT_SEFAZ", m.get("Multiplicador", m.get("MULTIPLICADOR SEFAZ", 0.0))))
+        icms_retido = float(m.get("VALOR ICMS RETIDO", m.get("icms_retido", saldo_devedor)))
 
-        # ICMS Retido: prioridade p/ memória; senão mult * venda_desc; fallback saldo
-        icms_ret_mem = r.memoria.get("VALOR ICMS RETIDO") or r.memoria.get("ICMS_RETIDO")
-        if icms_ret_mem is not None:
-            icms_retido = round(float(icms_ret_mem), 2)
-        else:
-            icms_ret_calc = round(mult * venda_desc, 2) if (mult and venda_desc) else 0.0
-            icms_retido = icms_ret_calc if icms_ret_calc > 0 else round(saldo_devedor, 2)
+        linha = {
+            "idx": it.nItem, "cProd": it.cProd, "xProd": it.xProd,
+            "ncm": it.ncm, "cst": it.cst, "cfop": it.cfop,
 
-        total_st += icms_retido
+            # nomes usados no template
+            "qCom": qCom, "vUnCom": vUnCom, "vProd": vProd,
+            "vFrete": vFrete, "vIPI": vIPI, "vOutro": vOutro,
+            "vICMSDeson": vICMSDeson,
 
-        linhas.append({
-            # identificação
-            "idx": it.nItem,
-            "cProd": it.cProd,
-            "xProd": it.xProd,
-            "ncm": it.ncm,
-            "cst": it.cst,
-            "cfop": it.cfop,
-
-            # valores básicos
-            "qCom": float(it.qCom),
-            "vUnCom": float(it.vUnCom),
-            "vProd": float(it.vProd),
-            "vFrete": float(it.vFrete),
-            "vIPI": float(it.vIPI),
-            "vOutro": float(it.vOutro),
-            "vICMSDeson": float(
-    r.memoria.get("ICMS DESONERADO", r.memoria.get("icms_deson", getattr(it, "vICMSDeson", 0.0)))
-),
-
-            # colunas iguais à planilha
-            "venda_desc_icms": venda_desc,
-            "valor_operacao": venda_desc,              # na sua planilha são iguais
-            "mva_percentual": mva_percent,             # %
+            "venda_desc_icms": venda_desc_icms,
+            "valor_oper": valor_oper,
+            "mva_tipo": m.get("mva_tipo", "MVA Padrão"),
+            "mva_percent": mva_percent,              # em %
             "valor_agregado": valor_agregado,
             "base_st": base_st,
-            "aliq_st": ali_int,                        # fração (exibir % no template)
-            "valor_icms_st": valor_icms_st,            # Base ST * Aliq interna
+            "aliq_st": aliq_st,                      # fração
+            "icms_teorico_dest": icms_teorico_dest,
+            "icms_origem_calc": icms_origem_calc,
+            "icms_st": icms_st,
             "saldo_devedor": saldo_devedor,
-            "multiplicador": mult,                     # fração (exibir %)
+            "mult_sefaz": mult_sefaz,                # fração
             "icms_retido": icms_retido,
+        }
+
+        # —— ALIASES esperados pelo seu resultado.html ——
+        linha.update({
+            "quant": qCom, "vun": vUnCom, "vprod": vProd, "frete": vFrete, "ipi": vIPI, "vout": vOutro,
+            "icms_deson": vICMSDeson,
+
+            "valor_operacao": valor_oper,
+            "mva_percentual": mva_percent,
+            "base_calculo_st": base_st,
+            "aliquota_icms_st": aliq_st,
+            "valor_icms_st": icms_st,
+            "valor_saldo_devedor": saldo_devedor,
+            "multiplicador_sefaz": mult_sefaz,
+            "multiplicador": mult_sefaz,            # <— NOVO (fração; o template multiplica por 100)
+            "valor_icms_retido": icms_retido,
         })
+        # ————————————————————————————————
+
+        linhas.append(linha)
+        total_st += float(r.icms_st_devido or 0.0)
+
+    payload = {"uf_origem": uf_origem, "uf_destino": uf_destino, "linhas": linhas, "total_st": total_st}
+    payload_json = json.dumps(payload)
 
     return render_template(
         "resultado.html",
         linhas=linhas,
         total_st=total_st,
         uf_origem=uf_origem,
-        uf_destino=uf_destino
+        uf_destino=uf_destino,
+        payload_json=payload_json
     )
+
+
 
 
 @app.route("/admin/run-update")

@@ -10,19 +10,15 @@ getcontext().prec = 28
 ROUND = ROUND_HALF_UP
 
 def D(x) -> Decimal:
-    if isinstance(x, Decimal):
-        return x
-    if x is None:
-        return Decimal("0")
+    if isinstance(x, Decimal): return x
+    if x is None: return Decimal("0")
     s = str(x).strip()
     if "." in s and "," in s and s.rfind(",") > s.rfind("."):
         s = s.replace(".", "").replace(",", ".")
     else:
         s = s.replace(",", ".")
-    try:
-        return Decimal(s or "0")
-    except Exception:
-        return Decimal("0")
+    try: return Decimal(s or "0")
+    except Exception: return Decimal("0")
 
 def q2(x) -> Decimal:
     return D(x).quantize(Decimal("0.01"), rounding=ROUND)
@@ -35,17 +31,13 @@ class NFItem:
     ncm: str
     cst: str
     cfop: str
-
     qCom: Decimal
     vUnCom: Decimal
     vProd: Decimal
-
     vFrete: Decimal
     vIPI: Decimal
     vOutro: Decimal
     vICMSDeson: Decimal
-
-    # campos adicionais para a prévia
     uCom: str = ""
     uTrib: str = ""
     cEAN: str = ""
@@ -54,176 +46,109 @@ class NFItem:
 
 class NFEXML:
     def __init__(self, xml_bytes: bytes):
-        # funciona com <NFe> e <nfeProc>
+        # aceita NFe e nfeProc
         self.root = ET.fromstring(xml_bytes)
 
-    # helpers de XPath com wildcard de namespace
+    # ---------- helpers com wildcard por segmento ----------
+    def _mkpath(self, path: str) -> str:
+        parts = [p for p in path.split("/") if p]
+        return ".//" + "/".join(f"{{*}}{p}" for p in parts)
+
     def _find(self, path: str) -> Optional[ET.Element]:
-        return self.root.find(f".//{{*}}{path}")
+        return self.root.find(self._mkpath(path))
 
     def _findall(self, path: str) -> List[ET.Element]:
-        return self.root.findall(f".//{{*}}{path}")
+        return self.root.findall(self._mkpath(path))
 
     def _txt(self, el: Optional[ET.Element], path: str, default: str = "") -> str:
         try:
-            val = el.findtext(f".//{{*}}{path}") if el is not None else None
+            if el is None:
+                val = self.root.findtext(self._mkpath(path))
+            else:
+                # relativo ao elemento: também aplicar wildcard por segmento
+                val = el.findtext(self._mkpath(path))
             return (val or default).strip()
         except Exception:
             return default
 
-    def _num(self, el: Optional[ET.Element], path: str, default: Decimal = Decimal("0")) -> Decimal:
-        s = self._txt(el, path, "")
-        return D(s) if s else default
+    def _num(self, el: Optional[ET.Element], path: str) -> Decimal:
+        if el is None:
+            return D(self._txt(None, path, "0"))
+        val = el.findtext(self._mkpath(path))
+        return D(val or "0")
 
-    # ---------------------- Cabeçalho (achatado + blocos) ----------------------
+    # ---------------------- Cabeçalho (achatado) ----------------------
     def header(self) -> Dict[str, Any]:
         ide   = self._find("ide")
         emit  = self._find("emit")
         dest  = self._find("dest")
-        transp= self._find("transp")
         infNFe= self._find("infNFe")
 
-        chave = infNFe.attrib.get("Id", "").replace("NFe", "") if infNFe is not None else ""
+        # endereço amigável
+        def addr(block: str, parent: Optional[ET.Element]) -> Dict[str, str]:
+            e = parent.find(self._mkpath(block)) if parent is not None else None
+            xLgr = self._txt(e, "xLgr")
+            nro  = self._txt(e, "nro")
+            xBai = self._txt(e, "xBairro")
+            xMun = self._txt(e, "xMun")
+            uf   = self._txt(e, "UF")
+            cep  = self._txt(e, "CEP")
+            end = ", ".join([p for p in [xLgr, nro, xBai] if p])
+            return {"end": end, "mun": xMun, "uf": uf, "cep": cep}
 
-        # endereço formatado
-        def fmt_addr(prefix: str) -> str:
-            xLgr = self._txt(emit if "Emit" in prefix else dest, f"{prefix}/xLgr")
-            nro  = self._txt(emit if "Emit" in prefix else dest, f"{prefix}/nro")
-            bai  = self._txt(emit if "Emit" in prefix else dest, f"{prefix}/xBairro")
-            parts = []
-            if xLgr: parts.append(xLgr)
-            if nro:  parts.append(nro)
-            if bai:  parts.append(bai)
-            return ", ".join(parts)
+        emit_addr = addr("enderEmit", emit)
+        dest_addr = addr("enderDest", dest)
 
-        head = {
-            # achatado (o template usa estes)
-            "chave": chave,
-            "chNFe": chave,  # alias
+        chave = (infNFe.attrib.get("Id", "") if infNFe is not None else "").replace("NFe", "")
+
+        return {
+            "chave":  chave,
             "numero": self._txt(ide, "nNF"),
             "serie":  self._txt(ide, "serie"),
             "modelo": self._txt(ide, "mod"),
             "natOp":  self._txt(ide, "natOp"),
             "dhEmi":  self._txt(ide, "dhEmi") or self._txt(ide, "dEmi"),
             "dhSaiEnt": self._txt(ide, "dhSaiEnt") or self._txt(ide, "dSaiEnt"),
+
             "emitente_nome": self._txt(emit, "xNome"),
             "emitente_cnpj": self._txt(emit, "CNPJ") or self._txt(emit, "CPF"),
             "emitente_ie":   self._txt(emit, "IE"),
-            "emitente_endereco": fmt_addr("enderEmit"),
-            "emitente_municipio": self._txt(emit, "enderEmit/xMun"),
-            "emitente_uf":   self._txt(emit, "enderEmit/UF"),
-            "emitente_cep":  self._txt(emit, "enderEmit/CEP"),
+            "emitente_endereco":   emit_addr["end"],
+            "emitente_municipio":  emit_addr["mun"],
+            "emitente_uf":         emit_addr["uf"],
+            "emitente_cep":        emit_addr["cep"],
+
             "dest_nome": self._txt(dest, "xNome"),
             "dest_cnpj": self._txt(dest, "CNPJ") or self._txt(dest, "CPF"),
             "dest_ie":   self._txt(dest, "IE"),
             "dest_isuf": self._txt(dest, "ISUF"),
-            "dest_endereco": fmt_addr("enderDest"),
-            "dest_municipio": self._txt(dest, "enderDest/xMun"),
-            "dest_uf":   self._txt(dest, "enderDest/UF"),
-            "dest_cep":  self._txt(dest, "enderDest/CEP"),
-            # UFs de movimentação para o formulário de cálculo
-            "uf_origem":  self._txt(emit, "enderEmit/UF"),
-            "uf_destino": self._txt(dest, "enderDest/UF"),
-            # blocos originais (mantidos para compatibilidade)
-            "ide": {
-                "nNF":   self._txt(ide, "nNF"),
-                "dhEmi": self._txt(ide, "dhEmi") or self._txt(ide, "dEmi"),
-                "natOp": self._txt(ide, "natOp"),
-                "mod":   self._txt(ide, "mod"),
-                "serie": self._txt(ide, "serie"),
-                "tpNF":  self._txt(ide, "tpNF"),
-                "idDest":self._txt(ide, "idDest"),
-            },
-            "emit": {
-                "xNome": self._txt(emit, "xNome"),
-                "CNPJ":  self._txt(emit, "CNPJ"),
-                "UF":    self._txt(emit, "enderEmit/UF"),
-                "IE":    self._txt(emit, "IE"),
-            },
-            "dest": {
-                "xNome": self._txt(dest, "xNome"),
-                "CNPJ":  self._txt(dest, "CNPJ"),
-                "UF":    self._txt(dest, "enderDest/UF"),
-                "IE":    self._txt(dest, "IE"),
-                "indIEDest": self._txt(dest, "indIEDest"),
-            },
-            "transp": {
-                "modFrete": self._txt(transp, "modFrete"),
-            }
+            "dest_endereco":   dest_addr["end"],
+            "dest_municipio":  dest_addr["mun"],
+            "dest_uf":         dest_addr["uf"],
+            "dest_cep":        dest_addr["cep"],
+
+            "uf_origem":  emit_addr["uf"],
+            "uf_destino": dest_addr["uf"],
         }
-        return head
 
     # ------------------------------ Totais -------------------------------------
     def totais(self) -> Dict[str, float]:
-        tot = self._find("total/ICMSTot")
-        if tot is None:
+        icmstot = self._find("total/ICMSTot")
+        if icmstot is None:
             return {}
-        keys = ["vProd","vFrete","vIPI","vDesc","vOutro","vST","vICMSDeson","vNF"]
-        out: Dict[str, float] = {}
-        for k in keys:
-            out[k] = float(q2(self._num(tot, k, Decimal("0"))))
-        return out
-
-    # ---------------------------- Transporte -----------------------------------
-    def transporte(self) -> Dict[str, Any]:
-        transp = self._find("transp")
-        if transp is None:
-            return {}
-        transporta = transp.find(".//{*}transporta")
-        vol = transp.find(".//{*}vol")
-        return {
-            "modFrete": self._txt(transp, "modFrete"),
-            "transportadora_nome": self._txt(transporta, "xNome"),
-            "transportadora_cnpj": self._txt(transporta, "CNPJ") or self._txt(transporta, "CPF"),
-            "uf": self._txt(transporta, "UF"),
-            "qVol": self._txt(vol, "qVol"),
-            "esp": self._txt(vol, "esp"),
-            "marca": self._txt(vol, "marca"),
-            "nVol": self._txt(vol, "nVol"),
-            "pesoL": self._txt(vol, "pesoL"),
-            "pesoB": self._txt(vol, "pesoB"),
-        }
-
-    # ----------------------------- Cobrança ------------------------------------
-    def cobranca(self) -> Dict[str, Any]:
-        cobr = self._find("cobr")
-        if cobr is None:
-            return {}
-        fat = cobr.find(".//{*}fat")
-        return {
-            "nFat": self._txt(fat, "nFat"),
-            "vOrig": float(q2(self._num(fat, "vOrig", Decimal("0")))),
-            "vDesc": float(q2(self._num(fat, "vDesc", Decimal("0")))),
-            "vLiq":  float(q2(self._num(fat, "vLiq",  Decimal("0")))),
-        }
-
-    def duplicatas(self) -> List[Dict[str, Any]]:
-        cobr = self._find("cobr")
-        if cobr is None:
-            return []
-        dups = []
-        for dup in cobr.findall(".//{*}dup"):
-            dups.append({
-                "nDup": self._txt(dup, "nDup"),
-                "dVenc": self._txt(dup, "dVenc"),
-                "vDup": float(q2(self._num(dup, "vDup", Decimal("0")))),
-            })
-        return dups
-
-    # ------------------------- Informações adicionais --------------------------
-    def inf_adic(self) -> str:
-        inf = self._find("infAdic")
-        return self._txt(inf, "infCpl", "")
+        def f(k): return float(q2(self._num(icmstot, k)))
+        keys = ["vProd","vFrete","vIPI","vDesc","vOutro","vICMSDeson","vNF"]
+        return {k: f(k) for k in keys}
 
     # ------------------------------- Itens -------------------------------------
     def itens(self) -> List[NFItem]:
         dets = self._findall("det")
-        base_items: List[Dict[str, Any]] = []
+        tmp: List[Dict[str, Any]] = []
         soma_vprod = Decimal("0")
 
         for det in dets:
-            prod    = det.find(".//{*}prod")
-            imposto = det.find(".//{*}imposto")
+            prod = det.find(self._mkpath("prod"))
+            imposto = det.find(self._mkpath("imposto"))
 
             nItem = det.attrib.get("nItem", "").strip()
             cProd = self._txt(prod, "cProd")
@@ -240,26 +165,24 @@ class NFEXML:
             vUnCom= D(self._txt(prod, "vUnCom", "0"))
             vProd = q2(qCom * vUnCom)
 
-            # ICMS (CST/CSOSN e desoneração)
+            # ICMS
             cst = ""
             vICMSDeson = Decimal("0")
-            icms = imposto.find(".//{*}ICMS") if imposto is not None else None
+            icms = imposto.find(self._mkpath("ICMS")) if imposto is not None else None
             if icms is not None:
                 for child in list(icms):
                     cst = self._txt(child, "CST") or self._txt(child, "CSOSN") or ""
                     vICMSDeson = D(self._txt(child, "vICMSDeson", "0"))
                     break
 
-            # IPI por item (se houver)
             vIPI = Decimal("0")
-            ipi = imposto.find(".//{*}IPI") if imposto is not None else None
+            ipi = imposto.find(self._mkpath("IPI")) if imposto is not None else None
             if ipi is not None:
                 vIPI = D(self._txt(ipi, "IPITrib/vIPI", "0"))
 
-            # frete declarado no item (quando existir)
             vFrete_item = D(self._txt(prod, "vFrete", "0"))
 
-            base_items.append({
+            tmp.append({
                 "nItem": nItem, "cProd": cProd, "xProd": xProd,
                 "ncm": ncm, "cfop": cfop, "cst": cst,
                 "qCom": qCom, "vUnCom": vUnCom, "vProd": vProd,
@@ -269,43 +192,68 @@ class NFEXML:
             })
             soma_vprod += vProd
 
-        # Totais para rateio (quando o frete vem só no total)
-        tot = self._find("total/ICMSTot")
-        vFrete_total = self._num(tot, "vFrete", Decimal("0"))
-        vOutro_total = self._num(tot, "vOutro", Decimal("0"))
+        # rateio frete/outros
+        icmstot = self._find("total/ICMSTot")
+        vFrete_total = self._num(icmstot, "vFrete") if icmstot is not None else Decimal("0")
+        vOutro_total = self._num(icmstot, "vOutro") if icmstot is not None else Decimal("0")
 
-        soma_frete_item = sum((bi["vFrete_item"] for bi in base_items), Decimal("0"))
+        soma_frete_item = sum((r["vFrete_item"] for r in tmp), Decimal("0"))
         usar_frete_item = soma_frete_item > 0
 
         itens: List[NFItem] = []
-        for bi in base_items:
+        for r in tmp:
             if usar_frete_item:
-                vFrete_i = q2(bi["vFrete_item"])
+                vFrete_i = q2(r["vFrete_item"])
             else:
-                prop = (bi["vProd"] / soma_vprod) if soma_vprod > 0 else Decimal("0")
+                prop = (r["vProd"]/soma_vprod) if soma_vprod > 0 else Decimal("0")
                 vFrete_i = q2(vFrete_total * prop)
 
-            prop = (bi["vProd"] / soma_vprod) if soma_vprod > 0 else Decimal("0")
+            prop = (r["vProd"]/soma_vprod) if soma_vprod > 0 else Decimal("0")
             vOutro_i = q2(vOutro_total * prop)
 
             itens.append(NFItem(
-                nItem=bi["nItem"],
-                cProd=bi["cProd"],
-                xProd=bi["xProd"],
-                ncm=bi["ncm"],
-                cst=bi["cst"],
-                cfop=bi["cfop"],
-                qCom=q2(bi["qCom"]),
-                vUnCom=q2(bi["vUnCom"]),
-                vProd=q2(bi["vProd"]),
-                vFrete=vFrete_i,
-                vIPI=q2(bi["vIPI"]),
-                vOutro=vOutro_i,
-                vICMSDeson=q2(bi["vICMSDeson"]),
-                uCom=bi["uCom"],
-                uTrib=bi["uTrib"],
-                cEAN=bi["cEAN"],
-                cEANTrib=bi["cEANTrib"],
-                cest=bi["cest"],
+                nItem=r["nItem"], cProd=r["cProd"], xProd=r["xProd"],
+                ncm=r["ncm"], cst=r["cst"], cfop=r["cfop"],
+                qCom=q2(r["qCom"]), vUnCom=q2(r["vUnCom"]), vProd=q2(r["vProd"]),
+                vFrete=vFrete_i, vIPI=q2(r["vIPI"]), vOutro=vOutro_i, vICMSDeson=q2(r["vICMSDeson"]),
+                uCom=r["uCom"], uTrib=r["uTrib"], cEAN=r["cEAN"], cEANTrib=r["cEANTrib"], cest=r["cest"],
             ))
         return itens
+
+    # extras usados no template (se quiser usar depois)
+    def transporte(self) -> Dict[str, Any]:
+        transp = self._find("transp")
+        if transp is None: return {}
+        transporta = transp.find(self._mkpath("transporta"))
+        vol = transp.find(self._mkpath("vol"))
+        return {
+            "modFrete": self._txt(transp, "modFrete"),
+            "transportadora_nome": self._txt(transporta, "xNome"),
+            "transportadora_cnpj": self._txt(transporta, "CNPJ") or self._txt(transporta, "CPF"),
+            "uf": self._txt(transporta, "UF"),
+            "qVol": self._txt(vol, "qVol"),
+            "esp": self._txt(vol, "esp"),
+            "marca": self._txt(vol, "marca"),
+            "nVol": self._txt(vol, "nVol"),
+            "pesoL": self._txt(vol, "pesoL"),
+            "pesoB": self._txt(vol, "pesoB"),
+        }
+
+    def cobranca(self) -> Dict[str, Any]:
+        cobr = self._find("cobr")
+        if cobr is None: return {}
+        fat = cobr.find(self._mkpath("fat"))
+        def _f(k): return float(q2(self._num(fat, k))) if fat is not None else 0.0
+        return {"nFat": self._txt(fat, "nFat"), "vOrig": _f("vOrig"), "vDesc": _f("vDesc"), "vLiq": _f("vLiq")}
+
+    def duplicatas(self) -> List[Dict[str, Any]]:
+        cobr = self._find("cobr")
+        if cobr is None: return []
+        out = []
+        for dup in cobr.findall(self._mkpath("dup")):
+            out.append({"nDup": self._txt(dup,"nDup"), "dVenc": self._txt(dup,"dVenc"), "vDup": float(q2(self._num(dup,"vDup")))})
+        return out
+
+    def inf_adic(self) -> str:
+        inf = self._find("infAdic")
+        return self._txt(inf, "infCpl", "")
