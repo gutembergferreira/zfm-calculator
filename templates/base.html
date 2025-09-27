@@ -44,6 +44,12 @@
 
     <div class="nav-section">Principal</div>
     <ul class="nav nav-pills flex-column gap-1">
+              <li>
+        <a class="nav-link {% if request.endpoint=='core.index' %}active{% endif %}" href="{{ url_for('core.index') }}">
+          <i class="nav-icon bi bi-house"></i>
+          <span class="d-none d-lg-inline">Home</span>
+        </a>
+      </li>
       <li>
         <a class="nav-link {% if request.endpoint=='core.dashboard' %}active{% endif %}" href="{{ url_for('core.dashboard') }}">
           <i class="nav-icon bi bi-speedometer2"></i>
@@ -51,15 +57,9 @@
         </a>
       </li>
       <li>
-        <a class="nav-link {% if request.endpoint=='core.index' %}active{% endif %}" href="{{ url_for('core.index') }}">
-          <i class="nav-icon bi bi-house"></i>
-          <span class="d-none d-lg-inline">Landing</span>
-        </a>
-      </li>
-      <li>
         <a class="nav-link {% if request.endpoint in ['nfe.preview','nfe.calcular'] %}active{% endif %}" href="{{ url_for('core.leitorxml') }}">
           <i class="nav-icon bi bi-filetype-xml"></i>
-          <span class="d-none d-lg-inline">NF-e</span>
+          <span class="d-none d-lg-inline">Upload de XML's NF</span>
         </a>
       </li>
       <li>

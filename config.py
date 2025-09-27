@@ -4,6 +4,9 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 class Config:
+    FLASK_ENV = os.getenv("FLASK_ENV","development")
+    FLASK_DEBUG = os.getenv("FLASK_DEBUG","1")
+    FLASK_APP = os.getenv("FLASK_APP","oraculoicms_app")
     # Flask
     SECRET_KEY = os.getenv("SECRET_KEY", "zfmbet410")
     SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "zfm_session")
