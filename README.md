@@ -82,3 +82,25 @@ flask run
 - O motor de cálculo está **didático** e isolado em `calc.py`. Ajuste as fórmulas conforme suas tabelas ZFM (MVA vs multiplicador) e regras de encerramento.
 - `xml_parser.py` faz um **rateio simples do frete** por item. Se quiser, altere para proporcional ao valor do item.
 - Para evitar quebra com planilhas vazias, preencha **ao menos uma linha** por aba com valores padrão.
+## Novas funcionalidades (2025-09-27)
+
+- Pastas por usuário para uploads XML: `UPLOAD_FOLDER/user_<id>/YYYY/MM`.
+- Modelos novos: `UserFile`, `NFESummary`, `AuditLog` em `oraculoicms_app/models/file.py`.
+- Plano com limites de armazenamento: campos adicionados em `Plan` (`max_files`, `max_storage_mb`, `max_monthly_files`, `max_monthly_storage_mb`).
+- Blueprint `files`: rotas `/meus-arquivos`, `/upload-xml`, `/ver-xml/<id>`, `/deletar-xml/<id>`, `/parse-xml/<id>`, `/relatorios/nfe`.
+- Templates: `templates/files.html` (gestão de XMLs) e `templates/relatorio_geral.html` (relatório geral).
+
+### Migração do banco
+
+Se você usa Flask-Migrate:
+```
+flask db migrate -m "user files & summaries"
+flask db upgrade
+```
+
+Para ambiente DEV rápido:
+```
+flask init-db
+```
+
+> Garanta que `User` tenha relacionamento `plan` (ex.: `user.plan_id -> Plan.id`). Se não houver, inclua a coluna `plan_id` em `users` e ajuste conforme seu fluxo de assinatura.

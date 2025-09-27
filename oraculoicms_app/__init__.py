@@ -10,6 +10,7 @@ from .services.calc_service import init_motor
 from .blueprints.core import bp as core_bp
 from .blueprints.auth import bp as auth_bp
 from .blueprints.nfe import bp as nfe_bp
+from .blueprints.files import bp as files_bp
 
 def create_app(config_object: type[Config] = Config) -> Flask:
     app = Flask(__name__, template_folder="../templates", static_folder="../static")
@@ -27,7 +28,7 @@ def create_app(config_object: type[Config] = Config) -> Flask:
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(nfe_bp)
-
+    app.register_blueprint(files_bp)
     # CLI (ex.: flask init-db)
     register_cli(app)
 

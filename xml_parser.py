@@ -137,7 +137,7 @@ class NFEXML:
         if icmstot is None:
             return {}
         def f(k): return float(q2(self._num(icmstot, k)))
-        keys = ["vProd","vFrete","vIPI","vDesc","vOutro","vICMSDeson","vNF"]
+        keys = ["vProd","vFrete","vIPI","vDesc","vOutro","vICMSDeson","vICMS","vST","vNF"]
         return {k: f(k) for k in keys}
 
     # ------------------------------- Itens -------------------------------------

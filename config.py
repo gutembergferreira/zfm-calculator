@@ -3,6 +3,9 @@
 import os
 from dotenv import load_dotenv
 load_dotenv()
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+
 class Config:
     FLASK_ENV = os.getenv("FLASK_ENV","development")
     FLASK_DEBUG = os.getenv("FLASK_DEBUG","1")
@@ -21,6 +24,12 @@ class Config:
     # SQLAlchemy
     SQLALCHEMY_DATABASE_URI = DATABASE_URL
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # raiz dos uploads (fora do git, preferível dentro de instance/)
+    UPLOAD_FOLDER = os.getenv(
+        "UPLOAD_FOLDER",
+        os.path.join(BASE_DIR, "uploads")  # absoluto: <raiz do projeto>/uploads
+    )
 
     # Pooling (ajuste conforme host)
     SQLALCHEMY_ENGINE_OPTIONS = {

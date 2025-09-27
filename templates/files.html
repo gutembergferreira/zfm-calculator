@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}Meus XMLs{% endblock %}
+{% block page_title %}<i class="bi bi-filetype-xml me-1"></i>Meus XMLs{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <form class="d-flex gap-2 mb-3" method="post" action="{{ url_for('files.upload_xml') }}" enctype="multipart/form-data">
+        <input class="form-control" type="file" name="xml" accept=".xml" required>
+        <button class="btn btn-primary"><i class="bi bi-cloud-upload"></i> Enviar XML</button>
+      </form>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle">
+          <thead><tr>
+            <th>Arquivo</th><th>Tamanho</th><th>Enviado em</th><th>Ações</th>
+          </tr></thead>
+          <tbody>
+            {% for f in files %}
+            <tr>
+              <td>{{ f.filename }}</td>
+              <td>{{ (f.size_bytes/1048576)|round(2) }} MB</td>
+              <td>{{ f.uploaded_at.strftime("%d/%m/%Y %H:%M") }}</td>
+                <td class="d-flex gap-2">
+                    <!-- Ver (preview em nova aba pode manter target) -->
+                    <a class="btn btn-outline-secondary btn-sm"
+                       href="{{ url_for('files.preview_xml', file_id=f.id) }}" target="_blank">
+                        <i class="bi bi-file-earmark-text"></i> Ver
+                    </a>
+
+                    {% if f.nfe_summary %}
+                    <span class="badge bg-success align-self-center">Processado</span>
+                    {% else %}
+                    <form method="post" action="{{ url_for('files.parse_xml', file_id=f.id) }}" class="d-inline">
+                        <button class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-gear"></i> Processar
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    <form method="post" action="{{ url_for('files.deletar_xml', file_id=f.id) }}"
+                          onsubmit="return confirm('Confirma excluir?');" class="d-inline">
+                        <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> Excluir</button>
+                    </form>
+                </td>
+
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted">Sem arquivos ainda.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <hr>
+      <div class="d-flex justify-content-end">
+        <a class="btn btn-success" href="{{ url_for('files.relatorio_nfe') }}"><i class="bi bi-graph-up"></i> Relatório Geral</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

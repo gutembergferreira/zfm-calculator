@@ -4,6 +4,5 @@
 service_account.json
 .idea
 __pycache__
-db.py.old
 /migrations
-app.py.old
+/uploads
