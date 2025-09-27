@@ -1,11 +1,33 @@
+# config.py
+# -*- coding: utf-8 -*-
 import os
 from dotenv import load_dotenv
-
-
 load_dotenv()
-
-
 class Config:
+    # Flask
     SECRET_KEY = os.getenv("SECRET_KEY", "zfmbet410")
+    SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "zfm_session")
+    # GOOGLE APIS
     SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
     GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "./service_account.json")
+    # Database
+    # Ex.: postgres://user:pass@localhost:5432/zfm  (Heroku-like)
+    # ou:  postgresql+psycopg://user:pass@host:5432/dbname  (SQLAlchemy 2.x)
+    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://postgres:postgres@localhost:5432/oraculoicms")
+
+    # SQLAlchemy
+    SQLALCHEMY_DATABASE_URI = DATABASE_URL
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Pooling (ajuste conforme host)
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,
+        "pool_size": int(os.getenv("DB_POOL_SIZE", "5")),
+        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "10")),
+    }
+
+    # SSL (alguns providers exigem)
+    # Para habilitar: export DB_SSLMODE=require
+    DB_SSLMODE = os.getenv("DB_SSLMODE")
+    if DB_SSLMODE:
+        SQLALCHEMY_ENGINE_OPTIONS["connect_args"] = {"sslmode": DB_SSLMODE}

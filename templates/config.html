@@ -1,52 +1,104 @@
-<!doctype html>
-<html lang="pt-br">
-<head>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width,initial-scale=1"/>
-    <title>Configurações — ZFM ICMS Copilot</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"/>
-</head>
-<body class="bg-light">
-<div class="container py-5">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h5 mb-0">Configurações</h1>
-        <div class="d-flex gap-2">
-            <a href="{{ url_for('admin_reload') }}" class="btn btn-outline-secondary btn-sm">Recarregar parâmetros</a>
-            <a href="{{ url_for('run_update', uf='AM') }}" class="btn btn-primary btn-sm">Executar atualização AM</a>
-            <a href="{{ url_for('index') }}" class="btn btn-outline-dark btn-sm">Voltar</a>
-        </div>
-    </div>
+{% extends 'base.html' %}
+{% block title %}Configurações — ZFM Calculator{% endblock %}
+{% block page_title %}<i class="bi bi-gear me-1"></i>Configurações{% endblock %}
+{% block content %}
 
+<div class="row g-3">
+  <!-- Info da planilha -->
+  <div class="col-12">
     <div class="card shadow-sm">
-        <div class="card-body">
-            <h2 class="h6">Fontes (aba <code>sources</code>)</h2>
-            {% if sources and sources|length %}
-            <div class="table-responsive">
-                <table class="table table-sm table-striped align-middle">
-                    <thead>
-                    <tr>
-                        {% for k in sources[0].keys() %}
-                        <th>{{ k }}</th>
-                        {% endfor %}
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for row in sources %}
-                    <tr>
-                        {% for v in row.values() %}
-                        <td>{{ v }}</td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            <p class="text-muted small mb-0">Edite/adicione linhas diretamente na planilha do Google. Esta página exibe o conteúdo atual.</p>
-            {% else %}
-            <p class="text-muted mb-0">Nenhuma fonte configurada. Crie a aba <code>sources</code> na planilha para listar fontes por UF.</p>
-            {% endif %}
+      <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center">
+          <div>
+            <div class="text-muted small">Planilha conectada</div>
+            <div class="h6 mb-0">{{ sheet_title or '—' }}</div>
+            <div class="small text-muted">Service Account: <code>{{ service_email or '—' }}</code></div>
+          </div>
+          <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('nfe.admin_reload') }}"><i class="bi bi-arrow-clockwise me-1"></i>Recarregar parâmetros</a>
+            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('nfe.run_update') }}"><i class="bi bi-cloud-download me-1"></i>Rodar atualizador (AM)</a>
+          </div>
         </div>
+        <hr>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="card h-100">
+              <div class="card-body">
+                <div class="text-muted small mb-2">Abas encontradas</div>
+                <ul class="list-group list-group-flush">
+                  {% for ws in worksheets %}
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span>{{ ws.title }}</span>
+                    <span class="badge text-bg-light">{{ ws.rows }} x {{ ws.cols }}</span>
+                  </li>
+                  {% endfor %}
+                  {% if not worksheets %}
+                  <li class="list-group-item text-muted">Nenhuma aba encontrada.</li>
+                  {% endif %}
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card h-100">
+              <div class="card-body">
+                <div class="text-muted small mb-2">Resumo</div>
+                <div class="row row-cols-2 g-2">
+                  <div class="col"><div class="stat"><div class="label">Atualizado às</div><div class="value">{{ updated_at or '—' }}</div></div></div>
+                  <div class="col"><div class="stat"><div class="label">Fontes ativas</div><div class="value">{{ sources_count or 0 }}</div></div></div>
+                </div>
+                <div class="small text-muted mt-2">Caso altere permissões da planilha, lembre-se de compartilhar com a service account acima.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
+  </div>
+
+  <!-- Editor de 'sources' -->
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="mb-3">Fontes (aba <code>sources</code>)</h6>
+        <form method="post" action="{{ url_for('nfe.config_save') }}">
+          <input type="hidden" name="row_count" value="{{ sources|length }}">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+              <thead class="table-light">
+                <tr>
+                  {% for c in columns %}
+                    <th>{{ c }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody class="small">
+                {% for r in sources %}
+                  <tr>
+                    {% for c in columns %}
+                      <td><input class="form-control form-control-sm" name="row-{{ loop.parent.loop.index0 }}-{{ c }}" value="{{ r[c] if r[c] is not none else '' }}"></td>
+                    {% endfor %}
+                  </tr>
+                {% endfor %}
+                {% if not sources %}
+                  <tr><td colspan="{{ columns|length }}" class="text-center text-muted">Nenhuma fonte cadastrada.</td></tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+
+          {% for c in columns %}
+            <input type="hidden" name="cols[]" value="{{ c }}">
+          {% endfor %}
+
+          <div class="d-flex justify-content-end gap-2">
+            <button class="btn btn-outline-secondary">Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
 </div>
-</body>
-</html>
+{% endblock %}

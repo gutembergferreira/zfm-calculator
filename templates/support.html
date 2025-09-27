@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Suporte & Base — ZFM Calculator{% endblock %}
+{% block page_title %}<i class="bi bi-life-preserver me-1"></i>Suporte & Base de conhecimento{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="card shadow-sm"><div class="card-body">
+      <div class="input-group input-group-lg mb-3">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input class="form-control" placeholder="Busque por dúvidas, tutoriais e guias">
+      </div>
+      <div class="accordion" id="faq">
+        <div class="accordion-item">
+          <h2 class="accordion-header"><button class="accordion-button" data-bs-toggle="collapse" data-bs-target="#f1">Como importar uma NF-e?</button></h2>
+          <div id="f1" class="accordion-collapse collapse show" data-bs-parent="#faq"><div class="accordion-body">
+            Vá em <em>NF-e</em>, clique em <strong>XML</strong> e selecione seu arquivo. A pré-visualização mostra itens, totais e observações.
+          </div></div>
+        </div>
+        <div class="accordion-item">
+          <h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#f2">Como ajustar os parâmetros de MVA?</button></h2>
+          <div id="f2" class="accordion-collapse collapse" data-bs-parent="#faq"><div class="accordion-body">
+            Acesse <em>Admin &gt; Sistema</em> e rode o atualizador. Você também pode editar a aba <em>sources</em> nas configurações.
+          </div></div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card shadow-sm mb-3"><div class="card-body">
+      <h6 class="mb-2">Fale com a gente</h6>
+      <div class="d-grid gap-2">
+        <a class="btn btn-outline-primary"><i class="bi bi-envelope me-1"></i>E-mail</a>
+        <a class="btn btn-outline-success"><i class="bi bi-whatsapp me-1"></i>WhatsApp</a>
+      </div>
+    </div></div>
+    <div class="card shadow-sm"><div class="card-body">
+      <h6 class="mb-2">Tutoriais em vídeo</h6>
+      <div class="ratio ratio-16x9 bg-light rounded"><!-- embed YouTube aqui --></div>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

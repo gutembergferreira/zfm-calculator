@@ -1,0 +1,815 @@
+# app.py
+# -*- coding: utf-8 -*-
+import io
+import json
+from datetime import datetime
+import base64
+import pandas as pd
+from flask import (
+    Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
+)
+from apscheduler.schedulers.background import BackgroundScheduler
+from functools import wraps
+
+# suas importações locais
+from config import Config                  # <- garante que é a classe Config
+from calc import MotorCalculo, ItemNF, ResultadoItem
+from sheets import SheetClient
+from xml_parser import NFEXML
+from report import gerar_pdf
+from updater import run_update_am
+from flask_migrate import Migrate
+
+from db import init_db, db, User, Plan, Payment, Setting, get_setting, set_setting
+from functools import wraps
+from decimal import Decimal
+
+
+
+app = Flask(__name__)
+app.config.from_object(Config)
+init_db(app)  # <- inicializa Postgres/SQLAlchemy
+migrate = Migrate(app, db)
+# ---------------------------------------
+# Inicialização: Sheets + motor de cálculo
+# ---------------------------------------
+sheet_client = SheetClient()
+matrices = sheet_client.matrices()
+motor = MotorCalculo(matrices)
+ALLOWED_EXT = {"xml"}
+
+def allowed(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXT
+
+def _reload_params():
+    global matrices, motor
+    matrices = sheet_client.matrices()
+    motor = MotorCalculo(matrices)   # <<< passar matrices
+
+# ---------------------------------------
+# Agendador mensal (dia 1 às 03:00)
+# ---------------------------------------
+scheduler = BackgroundScheduler(daemon=True)
+scheduler.add_job(lambda: run_update_am(sheet_client), "cron", day=1, hour=3, minute=0)
+scheduler.start()
+
+def _xml_from_request():
+    # 1) upload de arquivo
+    if "file" in request.files:
+        f = request.files["file"]
+        if f and f.filename:
+            return f.read()
+    # 2) xml vindo da tela de pré-visualização (hidden)
+    xml_b64 = request.form.get("xml_b64")
+    if xml_b64:
+        try:
+            return base64.b64decode(xml_b64)
+        except Exception:
+            return None
+    return None
+# ---------------------------------------
+# Rotas
+# ---------------------------------------
+
+# ---- NOVAS ROTAS – PÁGINAS DE CONTA/ADMIN/ETC. ----
+
+from flask import session
+
+def login_required(view_func):
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        if not session.get("user"):
+            flash("Faça login para acessar.", "warning")
+            return redirect(url_for("login", next=request.path))
+        return view_func(*args, **kwargs)
+    return wrapper
+
+def admin_required(view_func):
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        user = session.get("user")
+        if not user:
+            flash("Faça login para acessar.", "warning")
+            return redirect(url_for("login", next=request.path))
+        if not user.get("is_admin"):
+            flash("Acesso restrito ao administrador.", "danger")
+            return redirect(url_for("dashboard"))
+        return view_func(*args, **kwargs)
+    return wrapper
+
+@app.cli.command("init-db")
+def init_db_cmd():
+    """Cria as tabelas iniciais (DEV/MVP)."""
+    from db import db
+    db.create_all()
+    print("Tabelas criadas.")
+@app.route("/")
+def index():
+    # landing page
+    return render_template("landing.html")
+
+@app.route("/login", methods=["GET","POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email")
+        pwd = request.form.get("password")
+
+        u = User.query.filter_by(email=email).first()
+        if not u or not u.check_password(pwd):
+            flash("Credenciais inválidas.", "danger")
+            return redirect(url_for("login"))
+
+        session["user"] = {
+            "name": u.name, "email": u.email, "plan": u.plan,
+            "is_admin": u.is_admin, "renews_at": "—"
+        }
+        flash("Login efetuado.", "success")
+        next_url = request.args.get("next") or url_for("dashboard")
+        return redirect(next_url)
+
+    return render_template("auth_login.html")
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    flash("Você saiu da sessão.", "info")
+    return redirect(url_for("index"))
+
+@app.route("/register", methods=["GET","POST"])
+def register():
+    if request.method == "POST":
+        name = request.form.get("name","Usuário")
+        email = request.form.get("email")
+        pwd = request.form.get("password")
+        plan = request.form.get("plan","basic")
+
+        # validações simples
+        if not email or not pwd:
+            flash("Informe e-mail e senha.", "warning")
+            return redirect(url_for("register"))
+
+        if User.query.filter_by(email=email).first():
+            flash("E-mail já cadastrado.", "warning")
+            return redirect(url_for("register"))
+
+        u = User(name=name, email=email, plan=plan)
+        u.set_password(pwd)
+        db.session.add(u)
+        db.session.commit()
+
+        session["user"] = {
+            "name": u.name, "email": u.email, "plan": u.plan,
+            "is_admin": u.is_admin, "renews_at": "—"
+        }
+        flash("Conta criada com sucesso.", "success")
+        return redirect(url_for("dashboard"))
+
+    return render_template("auth_register.html")
+
+
+@app.route("/account")
+@login_required
+def account():
+    user = session.get("user") or {"name":"Convidado","email":"-","company":"-","plan":"basic","renews_at":"—"}
+    return render_template("user_account.html", user=user)
+
+@app.route("/account/update", methods=["POST"])
+@login_required
+def account_update():
+    u = User.query.filter_by(email=session["user"]["email"]).first()
+    if not u:
+        flash("Usuário não encontrado.", "danger")
+        return redirect(url_for("account"))
+
+    u.name = request.form.get("name", u.name)
+    new_email = request.form.get("email", u.email)
+    u.company = request.form.get("company", u.company)
+
+    # se trocar e-mail, verifique duplicidade
+    if new_email != u.email and User.query.filter_by(email=new_email).first():
+        flash("E-mail já em uso por outra conta.", "warning")
+        return redirect(url_for("account"))
+    u.email = new_email
+
+    db.session.commit()
+    session["user"].update({"name": u.name, "email": u.email})
+    flash("Dados atualizados.", "success")
+    return redirect(url_for("account"))
+
+
+@app.route("/account/password", methods=["POST"])
+@login_required
+def password_change():
+    u = User.query.filter_by(email=session["user"]["email"]).first()
+    if not u:
+        flash("Usuário não encontrado.", "danger")
+        return redirect(url_for("account"))
+    pwd1 = request.form.get("pwd1")
+    pwd2 = request.form.get("pwd2")
+    if not pwd1 or pwd1 != pwd2:
+        flash("Senhas não conferem.", "warning")
+        return redirect(url_for("account"))
+    u.set_password(pwd1)
+    db.session.commit()
+    flash("Senha alterada.", "success")
+    return redirect(url_for("account"))
+
+# ---------------- ADMIN: LISTAGEM E PAINEL ----------------
+
+@app.route("/admin")
+@admin_required
+def admin():
+    # filtros simples
+    users = User.query.order_by(User.created_at.desc()).all()
+    plans = Plan.query.order_by(Plan.price.asc()).all()
+
+    # "services" mock — você pode ligar com checagens reais
+    services = [
+        {"name": "Atualizador AM", "ok": True},
+        {"name": "Sheets API", "ok": True},
+        {"name": "PDF Service", "ok": True},
+    ]
+
+    # pagamentos resumidos (últimos 10)
+    latest_payments = Payment.query.order_by(Payment.created_at.desc()).limit(10).all()
+
+    # configs (settings)
+    cfg = {
+        "pix_key": get_setting("pix_key", "payments", ""),
+        "pix_receiver": get_setting("pix_receiver", "payments", ""),
+        "webhook_url": get_setting("webhook_url", "webhooks", ""),
+        "webhook_secret": get_setting("webhook_secret", "webhooks", ""),
+    }
+
+    return render_template(
+        "admin_panel.html",
+        users=users,
+        plans=plans,
+        services=services,
+        payments=latest_payments,
+        cfg=cfg
+    )
+
+# ---------------- ADMIN: USUÁRIOS ----------------
+
+@app.route("/admin/users/create", methods=["POST"])
+@admin_required
+def admin_users_create():
+    name = request.form.get("name")
+    email = request.form.get("email")
+    company = request.form.get("company")
+    plan = request.form.get("plan","basic")
+    pwd = request.form.get("password","123456")
+
+    if not name or not email:
+        flash("Nome e e-mail são obrigatórios.", "warning")
+        return redirect(url_for("admin"))
+    if User.query.filter_by(email=email).first():
+        flash("E-mail já cadastrado.", "warning")
+        return redirect(url_for("admin"))
+
+    u = User(name=name, email=email, company=company, plan=plan)
+    u.set_password(pwd)
+    db.session.add(u)
+    db.session.commit()
+    flash("Usuário criado.", "success")
+    return redirect(url_for("admin"))
+
+@app.route("/admin/users/<int:user_id>/update", methods=["POST"])
+@admin_required
+def admin_users_update(user_id):
+    u = User.query.get_or_404(user_id)
+    u.name = request.form.get("name", u.name)
+    new_email = request.form.get("email", u.email)
+    u.company = request.form.get("company", u.company)
+    u.plan = request.form.get("plan", u.plan)
+    u.active = request.form.get("active") == "on"
+    u.is_admin = request.form.get("is_admin") == "on"
+
+    if new_email != u.email and User.query.filter_by(email=new_email).first():
+        flash("E-mail já em uso.", "warning")
+        return redirect(url_for("admin"))
+    u.email = new_email
+
+    # troca de senha opcional
+    new_pwd = request.form.get("password")
+    if new_pwd:
+        u.set_password(new_pwd)
+
+    db.session.commit()
+    flash("Usuário atualizado.", "success")
+    return redirect(url_for("admin"))
+
+# ---------------- ADMIN: PLANOS ----------------
+
+@app.route("/admin/plans/create", methods=["POST"])
+@admin_required
+def admin_plans_create():
+    slug = request.form.get("slug")
+    name = request.form.get("name")
+    price = request.form.get("price","0").replace(",", ".")
+    limits = request.form.get("limits","")
+    active = request.form.get("active") == "on"
+
+    if not slug or not name:
+        flash("Slug e nome são obrigatórios.", "warning")
+        return redirect(url_for("admin"))
+    if Plan.query.filter_by(slug=slug).first():
+        flash("Slug já utilizado.", "warning")
+        return redirect(url_for("admin"))
+
+    p = Plan(slug=slug, name=name, price=Decimal(price or "0"), limits=limits, active=active)
+    db.session.add(p); db.session.commit()
+    flash("Plano criado.", "success")
+    return redirect(url_for("admin"))
+
+@app.route("/admin/plans/<int:plan_id>/update", methods=["POST"])
+@admin_required
+def admin_plans_update(plan_id):
+    p = Plan.query.get_or_404(plan_id)
+    p.slug = request.form.get("slug", p.slug)
+    p.name = request.form.get("name", p.name)
+    price = request.form.get("price","").replace(",", ".")
+    if price:
+        p.price = Decimal(price)
+    p.limits = request.form.get("limits", p.limits)
+    p.active = request.form.get("active") == "on"
+    db.session.commit()
+    flash("Plano atualizado.", "success")
+    return redirect(url_for("admin"))
+
+# ---------------- ADMIN: CONFIGS (PIX / WEBHOOKS) ----------------
+
+@app.route("/admin/settings/update", methods=["POST"])
+@admin_required
+def admin_settings_update():
+    # PIX / Payments
+    set_setting("pix_key", request.form.get("pix_key",""), "payments")
+    set_setting("pix_receiver", request.form.get("pix_receiver",""), "payments")
+    # Webhooks
+    set_setting("webhook_url", request.form.get("webhook_url",""), "webhooks")
+    set_setting("webhook_secret", request.form.get("webhook_secret",""), "webhooks")
+    flash("Configurações salvas.", "success")
+    return redirect(url_for("admin"))
+
+# ---------------- ADMIN: PAGAMENTOS (página própria) ----------------
+
+@app.route("/admin/payments")
+@admin_required
+def admin_payments():
+    # filtros
+    q_status = request.args.get("status","")
+    q_email = request.args.get("email","").strip()
+    page = int(request.args.get("page", 1))
+    per_page = 20
+
+    qry = Payment.query.join(User)
+    if q_status:
+        qry = qry.filter(Payment.status == q_status)
+    if q_email:
+        qry = qry.filter(User.email.ilike(f"%{q_email}%"))
+
+    pagination = qry.order_by(Payment.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    payments = pagination.items
+
+    statuses = ["pago","pendente","falhou","estornado"]
+
+    return render_template("admin_payments.html",
+        payments=payments,
+        pagination=pagination,
+        q_status=q_status, q_email=q_email,
+        statuses=statuses
+    )
+
+@app.route("/admin/payments/<int:pay_id>/update", methods=["POST"])
+@admin_required
+def admin_payment_update(pay_id):
+    p = Payment.query.get_or_404(pay_id)
+    p.status = request.form.get("status", p.status)
+    p.provider = request.form.get("provider", p.provider)
+    p.external_id = request.form.get("external_id", p.external_id)
+    p.description = request.form.get("description", p.description)
+    db.session.commit()
+    flash("Pagamento atualizado.", "success")
+    return redirect(url_for("admin_payments"))
+
+@app.route("/admin/payments/create", methods=["POST"])
+@admin_required
+def admin_payment_create():
+    email = request.form.get("email")
+    amount = request.form.get("amount","0").replace(",", ".")
+    status = request.form.get("status","pago")
+    provider = request.form.get("provider","manual")
+    description = request.form.get("description","")
+
+    u = User.query.filter_by(email=email).first()
+    if not u:
+        flash("Usuário não encontrado para esse e-mail.", "warning")
+        return redirect(url_for("admin_payments"))
+
+    p = Payment(user_id=u.id, amount=Decimal(amount or "0"), status=status, provider=provider, description=description)
+    db.session.add(p); db.session.commit()
+    flash("Pagamento lançado.", "success")
+    return redirect(url_for("admin_payments"))
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    stats = {
+        "users": 128,
+        "nfes_month": 4321,
+        "mrr": 15349.90,
+        "storage": "18.2 GB",
+        "last_week": [12, 9, 8, 10, 6, 11, 13],
+        "mrr_by_plan": {"Básico": 5200, "Pro": 9800, "Enterprise": 349.9}
+    }
+    return render_template("dashboard.html", stats=stats)
+
+
+@app.route("/checkout", methods=["GET","POST"])
+@login_required
+def checkout():
+    plans = [
+        {"id":"basic","name":"Básico","price":49.0,"desc":"300 NF-e / 1 usuário"},
+        {"id":"pro","name":"Pro","price":149.0,"desc":"2000 NF-e / 3 usuários"},
+        {"id":"ent","name":"Enterprise","price":0.0,"desc":"Ilimitado / SLA"},
+    ]
+    if request.method == "POST":
+        plan = request.form.get("plan","basic")
+        user = session.get("user", {"name":"Convidado"})
+        user["plan"] = plan
+        session["user"] = user
+        flash("Assinatura confirmada (exemplo).", "success")
+        return redirect(url_for("account"))
+    return render_template("checkout.html", plans=plans)
+
+@app.route("/support")
+@login_required
+def support():
+    return render_template("support.html")
+
+@app.route("/leitorxml")
+@login_required
+def leitorxml():
+    return render_template("index.html")
+
+@app.route("/preview", methods=["POST"])
+@login_required
+def preview():
+    xml_bytes = _xml_from_request()
+    if not xml_bytes:
+        flash("Envie um arquivo XML válido.")
+        return redirect(url_for("index"))
+
+    nfe = NFEXML(xml_bytes)
+
+    head   = nfe.header()
+    itens  = nfe.itens()
+    totais = nfe.totais()
+    transp = nfe.transporte()
+    cobr   = nfe.cobranca()
+    dups   = nfe.duplicatas()
+    obs    = nfe.inf_adic()
+
+    xml_b64 = base64.b64encode(xml_bytes).decode("ascii")
+
+    return render_template(
+        "preview.html",
+        head=head,
+        itens=itens,
+        itens_count=len(itens),
+        totais=totais,
+        transp=transp,
+        cobr=cobr,
+        duplicatas=dups,
+        inf_cpl=obs,
+        xml_b64=xml_b64
+    )
+
+
+
+@app.route("/calcular", methods=["POST"])
+@login_required
+def calcular():
+    xml_bytes = _xml_from_request()
+    if not xml_bytes:
+        flash("Não foi possível recuperar o XML.")
+        return redirect(url_for("index"))
+
+    nfe = NFEXML(xml_bytes)
+    itens = nfe.itens()
+    header = nfe.header()
+    uf_origem = (header.get("uf_origem") or "SP").upper()
+    uf_destino = (header.get("uf_destino") or "AM").upper()
+
+    linhas = []
+    total_st = 0.0
+
+    for it in itens:
+        r = motor.calcula_st(it, uf_origem, uf_destino, usar_multiplicador=True)
+        m = r.memoria
+
+        qCom   = float(it.qCom)
+        vUnCom = float(it.vUnCom)
+        vProd  = float(it.vProd)
+        vFrete = float(it.vFrete)
+        vIPI   = float(it.vIPI)
+        vOutro = float(it.vOutro)
+        vICMSDeson_xml = float(it.vICMSDeson)
+
+        vICMSDeson = float(m.get("ICMS DESONERADO", vICMSDeson_xml))
+
+        venda_desc_icms = float(m.get("VALOR DA VENDA COM DESCONTO DE ICMS", m.get("venda_desc_icms", 0.0)))
+        valor_oper = float(m.get("VALOR DA OPERAÇÃO", venda_desc_icms))
+        mva_percent = float(m.get("MARGEM_DE_VALOR_AGREGADO_MVA", m.get("mva_percentual_aplicado", 0.0)))
+        valor_agregado = float(m.get("VALOR AGREGADO", 0.0))
+        base_st = float(m.get("BASE_ST", m.get("BASE DE CÁLCULO SUBSTITUIÇÃO TRIBUTÁRIA", 0.0)))
+        aliq_st = float(m.get("ALÍQUOTA ICMS-ST", m.get("aliq_interna", 0.0)))
+        icms_teorico_dest = float(m.get("icms_teorico_dest", 0.0))
+        icms_origem_calc  = float(m.get("icms_origem_calc", vICMSDeson))
+        icms_st = float(m.get("VALOR_ICMS_ST", 0.0))
+        saldo_devedor = float(m.get("SALDO_DEVEDOR_ST", m.get("VALOR SALDO DEVEDOR ICMS ST", 0.0)))
+        mult_sefaz = float(m.get("MULT_SEFAZ", m.get("Multiplicador", m.get("MULTIPLICADOR SEFAZ", 0.0))))
+        icms_retido = float(m.get("VALOR ICMS RETIDO", m.get("icms_retido", saldo_devedor)))
+
+        linha = {
+            "idx": it.nItem, "cProd": it.cProd, "xProd": it.xProd,
+            "ncm": it.ncm, "cst": it.cst, "cfop": it.cfop,
+
+            # nomes usados no template
+            "qCom": qCom, "vUnCom": vUnCom, "vProd": vProd,
+            "vFrete": vFrete, "vIPI": vIPI, "vOutro": vOutro,
+            "vICMSDeson": vICMSDeson,
+
+            "venda_desc_icms": venda_desc_icms,
+            "valor_oper": valor_oper,
+            "mva_tipo": m.get("mva_tipo", "MVA Padrão"),
+            "mva_percent": mva_percent,              # em %
+            "valor_agregado": valor_agregado,
+            "base_st": base_st,
+            "aliq_st": aliq_st,                      # fração
+            "icms_teorico_dest": icms_teorico_dest,
+            "icms_origem_calc": icms_origem_calc,
+            "icms_st": icms_st,
+            "saldo_devedor": saldo_devedor,
+            "mult_sefaz": mult_sefaz,                # fração
+            "icms_retido": icms_retido,
+        }
+
+        # —— ALIASES esperados pelo seu resultado.html ——
+        linha.update({
+            "quant": qCom, "vun": vUnCom, "vprod": vProd, "frete": vFrete, "ipi": vIPI, "vout": vOutro,
+            "icms_deson": vICMSDeson,
+
+            "valor_operacao": valor_oper,
+            "mva_percentual": mva_percent,
+            "base_calculo_st": base_st,
+            "aliquota_icms_st": aliq_st,
+            "valor_icms_st": icms_st,
+            "valor_saldo_devedor": saldo_devedor,
+            "multiplicador_sefaz": mult_sefaz,
+            "multiplicador": mult_sefaz,            # <— NOVO (fração; o template multiplica por 100)
+            "valor_icms_retido": icms_retido,
+        })
+        # ————————————————————————————————
+
+        linhas.append(linha)
+        total_st += float(r.icms_st_devido or 0.0)
+
+    payload = {"uf_origem": uf_origem, "uf_destino": uf_destino, "linhas": linhas, "total_st": total_st}
+    payload_json = json.dumps(payload)
+
+    return render_template(
+        "resultado.html",
+        linhas=linhas,
+        total_st=total_st,
+        uf_origem=uf_origem,
+        uf_destino=uf_destino,
+        payload_json=payload_json
+    )
+
+
+
+
+@app.route("/admin/run-update")
+@login_required
+def run_update():
+    """Executa o updater para AM e recarrega parâmetros."""
+    uf = request.args.get("uf", "AM").upper()
+    if uf == "AM":
+        run_update_am(sheet_client)
+        _reload_params()
+        flash("Atualização AM executada e parâmetros recarregados.", "success")
+    else:
+        flash(f"UF não suportada ainda: {uf}", "warning")
+    return redirect(url_for("index"))
+
+@app.route("/admin/reload")
+@login_required
+def admin_reload():
+    """Recarrega parâmetros do Google Sheets sem rodar o updater."""
+    _reload_params()
+    flash("Parâmetros recarregados do Google Sheets.", "info")
+    return redirect(url_for("index"))
+
+@app.route("/config", methods=["GET"])
+@admin_required
+def config_view():
+    df_sources = matrices.get("sources")
+    if df_sources is None:
+        import pandas as pd
+        df_sources = pd.DataFrame(columns=["ATIVO","UF","NOME","URL","TIPO","PARSER","PRIORIDADE"])
+
+    # metadados da planilha
+    try:
+        sh = sheet_client.sh
+        worksheets = [{"title": ws.title, "rows": ws.row_count, "cols": ws.col_count} for ws in sh.worksheets()]
+        sheet_title = sh.title
+        service_email = sheet_client.service_email
+    except Exception:
+        worksheets, sheet_title, service_email = [], None, None
+
+    sources = df_sources.fillna("").to_dict(orient="records")
+    columns = list(df_sources.columns)
+    updated_at = datetime.now().isoformat(timespec="seconds")
+    sources_count = sum(1 for r in sources if str(r.get("ATIVO","")).strip() in ("1","true","True","on","ON"))
+
+    return render_template(
+        "config.html",
+        sources=sources, columns=columns,
+        sheet_title=sheet_title, service_email=service_email,
+        worksheets=worksheets, updated_at=updated_at,
+        sources_count=sources_count
+    )
+
+
+@app.route("/config/save", methods=["POST"])
+def config_save():
+    cols = request.form.getlist("cols[]")
+    try:
+        row_count = int(request.form.get("row_count", "0"))
+    except ValueError:
+        row_count = 0
+
+    rows = []
+    for i in range(row_count):
+        row = []
+        for c in cols:
+            val = request.form.get(f"row-{i}-{c}", "").strip()
+            row.append(val)
+        if any(row):
+            rows.append(row)
+
+    import pandas as pd
+    df_new = pd.DataFrame(rows, columns=cols)
+
+    if "ATIVO" in df_new.columns:
+        df_new["ATIVO"] = df_new["ATIVO"].apply(lambda x: "1" if str(x).strip() in ("1","true","True","on","ON") else "0")
+    if "PRIORIDADE" in df_new.columns:
+        df_new["PRIORIDADE"] = df_new["PRIORIDADE"].apply(lambda x: str(x).strip() if str(x).strip().isdigit() else "")
+
+    try:
+        sheet_client.write_df("sources", df_new)
+        _reload_params()
+        flash("Fontes salvas com sucesso.", "success")
+    except Exception as e:
+        flash(f"Falha ao salvar fontes: {e}", "danger")
+
+    return redirect(url_for("config_view"))
+
+@app.route("/upload", methods=["POST"])
+def upload():
+    if "file" not in request.files:
+        flash("Envie um arquivo XML.", "danger")
+        return redirect(url_for("index"))
+
+    f = request.files["file"]
+    if f.filename == "" or not allowed(f.filename):
+        flash("Arquivo inválido. Envie uma NF-e em XML.", "danger")
+        return redirect(url_for("index"))
+
+    xml_bytes = f.read()
+    try:
+        nfe = NFEXML(xml_bytes)
+        itens = nfe.itens()
+    except Exception as e:
+        flash(f"Não foi possível ler o XML: {e}", "danger")
+        return redirect(url_for("index"))
+
+    uf_origem = request.form.get("uf_origem", "SP").upper()
+    uf_destino = request.form.get("uf_destino", "AM").upper()
+    usar_mult = request.form.get("usar_multiplicador", "on") == "on"
+
+    linhas = []
+    total_st = 0.0
+    for idx, it in enumerate(itens, start=1):
+        r = motor.calcula_st(it, uf_origem, uf_destino, usar_multiplicador=usar_mult)
+        m = r.memoria
+
+        linhas.append({
+            "seq": m["SEQUENCIAL ITEM"],
+            "cod": m["COD. PRODUTO"],
+            "desc": m["DESCRIÇÃO"],
+            "ncm": m["NCM"],
+            "cfop": it.cfop,
+            "cst": it.cst,
+            "quant": m["QUANT."],
+            "vun": m["VALOR UNIT."],
+            "vprod": m["VLR TOTAL PRODUTO."],
+            "frete": m["FRETE"],
+            "ipi": m["IPI"],
+            "vout": m["DESP. ACES."],
+            "icms_deson": m["ICMS DESONERADO"],
+            "venda_desc_icms": m["VALOR DA VENDA COM DESCONTO DE ICMS"],
+            "valor_oper": m["VALOR DA OPERAÇÃO"],
+            "mva_tipo": m["mva_tipo"],
+            "mva_percent": m["MARGEM DE VALOR AGREGADO - MVA"],
+            "valor_agregado": m["VALOR AGREGADO"],
+            "base_st": m["BASE DE CÁLCULO SUBSTITUIÇÃO TRIBUTÁRIA"],
+            "aliq_st": m["ALÍQUOTA ICMS-ST"],  # decimal
+            "icms_teorico_dest": m["icms_teorico_dest"],
+            "icms_origem_calc": m["icms_origem_calc"],
+            "icms_st": m["VALOR DO ICMS ST"],
+            "saldo_devedor": m["VALOR SALDO DEVEDOR ICMS ST"],
+            "mult_sefaz": m["MULTIPLICADOR SEFAZ"],  # fator
+            "icms_retido": m["VALOR ICMS RETIDO"],
+        })
+        total_st += float(r.icms_st_devido)
+
+    payload = {
+        "uf_origem": uf_origem,
+        "uf_destino": uf_destino,
+        "linhas": linhas,
+        "total_st": total_st,
+    }
+    payload_json = json.dumps(payload)
+
+    return render_template(
+        "resultado.html",
+        linhas=linhas,
+        total_st=total_st,
+        uf_origem=uf_origem,
+        uf_destino=uf_destino,
+        payload_json=payload_json
+    )
+
+@app.route("/exportar-pdf", methods=["POST"])
+def exportar_pdf():
+    data_json = request.form.get("data")
+    if not data_json:
+        flash("Dados ausentes para gerar o PDF.", "danger")
+        return redirect(url_for("index"))
+    data = data_json
+    try:
+        cnt = 0
+        while isinstance(data, str) and cnt < 3:
+            data = json.loads(data)
+            cnt += 1
+    except Exception as e:
+        flash(f"Payload inválido para PDF: {e}", "danger")
+        return redirect(url_for("index"))
+
+    resultados = []
+    for row in data["linhas"]:
+        it_fake = ItemNF(
+            ncm=row.get("ncm",""), cfop=row.get("cfop",""), cst=row.get("cst",""),
+            valor_produto=0.0, frete_rateado=0.0, descontos=0.0,
+            despesas_acessorias=0.0, icms_destacado_origem=0.0
+        )
+        r_fake = ResultadoItem(
+            base_calculo_st=row.get("base_st", 0.0),
+            icms_st_devido=row.get("icms_st", 0.0),
+            memoria={
+                "base_oper": row.get("base_oper", 0.0),
+                "mva_tipo": row.get("mva_tipo", "-"),
+                "mva_percentual_aplicado": row.get("mva_percentual", 0.0),
+                "icms_teorico_dest": row.get("icms_teorico_dest", 0.0),
+                "icms_origem_calc": row.get("icms_origem_calc", 0.0),
+            }
+        )
+        resultados.append((it_fake, r_fake))
+
+    pdf_bytes = gerar_pdf(resultados, data.get("uf_origem","-"), data.get("uf_destino","-"))
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name="memoria_calculo_icms.pdf"
+    )
+
+# Diagnóstico opcional
+@app.route("/debug/sheets")
+def debug_sheets():
+    try:
+        info = {
+            "service_email": sheet_client.service_email,
+            "spreadsheet_title": sheet_client.sh.title,
+            "worksheets": [ws.title for ws in sheet_client.sh.worksheets()],
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        return jsonify(info), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(debug=True)

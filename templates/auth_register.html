@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Criar conta — ZFM Calculator{% endblock %}
+{% block page_title %}<i class="bi bi-person-plus me-1"></i>Criar conta{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7 col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <form method="post">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Nome</label>
+              <input class="form-control" name="name" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Empresa</label>
+              <input class="form-control" name="company">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">E-mail</label>
+              <input type="email" class="form-control" name="email" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Telefone</label>
+              <input class="form-control" name="phone">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Senha</label>
+              <input type="password" class="form-control" name="password" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Plano</label>
+              <select class="form-select" name="plan">
+                <option value="basic">Básico — R$ 49/mês</option>
+                <option value="pro">Pro — R$ 149/mês</option>
+                <option value="ent">Enterprise</option>
+              </select>
+            </div>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="terms" required>
+              <label for="terms" class="form-check-label">Concordo com os termos</label>
+            </div>
+            <button class="btn btn-primary">Criar conta</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

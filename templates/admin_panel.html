@@ -1,0 +1,205 @@
+{% extends 'base.html' %}
+{% block title %}Admin — ZFM Calculator{% endblock %}
+{% block page_title %}<i class="bi bi-shield-lock me-1"></i>Administração{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <ul class="nav nav-tabs" role="tablist">
+          <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#users" type="button" role="tab">Usuários</button></li>
+          <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#plans" type="button" role="tab">Planos</button></li>
+          <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#system" type="button" role="tab">Sistema</button></li>
+        </ul>
+
+        <div class="tab-content pt-3">
+
+          <!-- USERS -->
+          <div class="tab-pane fade show active" id="users" role="tabpanel">
+            <div class="d-flex justify-content-between mb-2">
+              <div class="text-muted">Total: {{ users|length }}</div>
+              <button class="btn btn-sm btn-primary" data-bs-toggle="collapse" data-bs-target="#newUser"><i class="bi bi-person-plus me-1"></i>Novo usuário</button>
+            </div>
+
+            <div id="newUser" class="collapse mb-3">
+              <form class="border rounded p-3" method="post" action="{{ url_for('admin_bp.admin_users_create') }}">
+                <div class="row g-2">
+                  <div class="col-md-3"><input class="form-control form-control-sm" name="name" placeholder="Nome" required></div>
+                  <div class="col-md-3"><input class="form-control form-control-sm" type="email" name="email" placeholder="E-mail" required></div>
+                  <div class="col-md-2"><input class="form-control form-control-sm" name="company" placeholder="Empresa"></div>
+                  <div class="col-md-2"><input class="form-control form-control-sm" name="password" placeholder="Senha (opcional)"></div>
+                  <div class="col-md-2">
+                    <select class="form-select form-select-sm" name="plan">
+                      <option value="basic">Basic</option>
+                      <option value="pro">Pro</option>
+                      <option value="ent">Enterprise</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="text-end mt-2"><button class="btn btn-sm btn-primary">Criar</button></div>
+              </form>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                  <tr><th>Nome</th><th>E-mail</th><th>Empresa</th><th>Plano</th><th>Admin</th><th>Ativo</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {% for u in users %}
+                  <tr>
+                    <form method="post" action="{{ url_for('admin_bp.admin_users_update', user_id=u.id) }}">
+                      <td><input class="form-control form-control-sm" name="name" value="{{ u.name }}"></td>
+                      <td><input class="form-control form-control-sm" name="email" value="{{ u.email }}"></td>
+                      <td><input class="form-control form-control-sm" name="company" value="{{ u.company or '' }}"></td>
+                      <td>
+                        <select class="form-select form-select-sm" name="plan">
+                          <option value="basic" {% if u.plan=='basic' %}selected{% endif %}>Basic</option>
+                          <option value="pro" {% if u.plan=='pro' %}selected{% endif %}>Pro</option>
+                          <option value="ent" {% if u.plan=='ent' %}selected{% endif %}>Enterprise</option>
+                        </select>
+                      </td>
+                      <td><input class="form-check-input" type="checkbox" name="is_admin" {% if u.is_admin %}checked{% endif %}></td>
+                      <td><input class="form-check-input" type="checkbox" name="active" {% if u.active %}checked{% endif %}></td>
+                      <td class="text-end">
+                        <div class="input-group input-group-sm">
+                          <input class="form-control form-control-sm" type="password" name="password" placeholder="Nova senha">
+                          <button class="btn btn-outline-secondary btn-sm">Salvar</button>
+                        </div>
+                      </td>
+                    </form>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- PLANS -->
+          <div class="tab-pane fade" id="plans" role="tabpanel">
+            <div class="d-flex justify-content-between mb-2">
+              <div class="text-muted">Planos ativos: {{ plans|selectattr('active')|list|length }}</div>
+              <button class="btn btn-sm btn-primary" data-bs-toggle="collapse" data-bs-target="#newPlan"><i class="bi bi-plus-lg me-1"></i>Novo plano</button>
+            </div>
+
+            <div id="newPlan" class="collapse mb-3">
+              <form class="border rounded p-3" method="post" action="{{ url_for('admin_bp.admin_plans_create') }}">
+                <div class="row g-2">
+                  <div class="col-md-2"><input class="form-control form-control-sm" name="slug" placeholder="slug (único)" required></div>
+                  <div class="col-md-3"><input class="form-control form-control-sm" name="name" placeholder="Nome" required></div>
+                  <div class="col-md-2"><input class="form-control form-control-sm" name="price" placeholder="Preço (R$)" required></div>
+                  <div class="col-md-4"><input class="form-control form-control-sm" name="limits" placeholder="Limites (texto)"></div>
+                  <div class="col-md-1 d-flex align-items-center">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" name="active" checked>
+                      <label class="form-check-label small">Ativo</label>
+                    </div>
+                  </div>
+                </div>
+                <div class="text-end mt-2"><button class="btn btn-sm btn-primary">Criar plano</button></div>
+              </form>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                  <tr><th>Slug</th><th>Nome</th><th>Preço</th><th>Limites</th><th>Ativo</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {% for p in plans %}
+                  <tr>
+                    <form method="post" action="{{ url_for('admin_bp.admin_plans_update', plan_id=p.id) }}">
+                      <td><input class="form-control form-control-sm" name="slug" value="{{ p.slug }}"></td>
+                      <td><input class="form-control form-control-sm" name="name" value="{{ p.name }}"></td>
+                      <td><input class="form-control form-control-sm" name="price" value="{{ '%.2f'|format(p.price) }}"></td>
+                      <td><input class="form-control form-control-sm" name="limits" value="{{ p.limits }}"></td>
+                      <td><input class="form-check-input" type="checkbox" name="active" {% if p.active %}checked{% endif %}></td>
+                      <td class="text-end"><button class="btn btn-outline-secondary btn-sm">Salvar</button></td>
+                    </form>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- SYSTEM -->
+          <div class="tab-pane fade" id="system" role="tabpanel">
+            <div class="row g-3">
+              <div class="col-md-4"><div class="card h-100"><div class="card-body">
+                <div class="text-muted small mb-2">Status dos serviços</div>
+                <ul class="list-unstyled mb-0">
+                  {% for s in services %}
+                  <li class="d-flex justify-content-between border-bottom py-1">
+                    <span>{{ s.name }}</span>
+                    <span class="badge text-bg-{{ 'success' if s.ok else 'danger' }}">{{ 'OK' if s.ok else 'OFF' }}</span>
+                  </li>
+                  {% endfor %}
+                </ul>
+              </div></div></div>
+
+              <div class="col-md-8"><div class="card h-100"><div class="card-body">
+                <h6 class="mb-3">Configurações de Pagamento</h6>
+                <form method="post" action="{{ url_for('admin_bp.admin_settings_update') }}">
+                  <div class="row g-2">
+                    <div class="col-md-6">
+                      <label class="form-label small">Chave Pix</label>
+                      <input class="form-control form-control-sm" name="pix_key" value="{{ cfg.pix_key }}">
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label small">Recebedor (nome/empresa)</label>
+                      <input class="form-control form-control-sm" name="pix_receiver" value="{{ cfg.pix_receiver }}">
+                    </div>
+                    <div class="col-md-8">
+                      <label class="form-label small">Webhook URL</label>
+                      <input class="form-control form-control-sm" name="webhook_url" value="{{ cfg.webhook_url }}">
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label small">Webhook Secret</label>
+                      <input class="form-control form-control-sm" name="webhook_secret" value="{{ cfg.webhook_secret }}">
+                    </div>
+                  </div>
+                  <div class="text-end mt-3">
+                    <button class="btn btn-primary btn-sm">Salvar configurações</button>
+                    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin_bp.admin_payments') }}"><i class="bi bi-cash-coin me-1"></i>Ver pagamentos</a>
+                  </div>
+                </form>
+              </div></div></div>
+            </div>
+
+            <hr class="my-3">
+
+            <div>
+              <h6 class="mb-2">Últimos pagamentos</h6>
+              <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                  <thead class="table-light">
+                    <tr><th>Data</th><th>Cliente</th><th>Valor</th><th>Status</th><th>Meio</th><th>Ref</th></tr>
+                  </thead>
+                  <tbody>
+                    {% for p in payments %}
+                    <tr>
+                      <td>{{ p.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                      <td>{{ p.user.name }} ({{ p.user.email }})</td>
+                      <td>R$ {{ '%.2f'|format(p.amount) }}</td>
+                      <td>{{ p.status }}</td>
+                      <td>{{ p.provider }}</td>
+                      <td class="text-muted small">{{ p.external_id or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not payments %}
+                    <tr><td colspan="6" class="text-center text-muted">Sem pagamentos recentes.</td></tr>
+                    {% endif %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div> <!-- /system -->
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

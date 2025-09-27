@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% block title %}Pagamentos — Admin{% endblock %}
+{% block page_title %}<i class="bi bi-cash-coin me-1"></i>Pagamentos{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+
+    <form class="row g-2 align-items-end mb-3" method="get">
+      <div class="col-md-3">
+        <label class="form-label small">E-mail</label>
+        <input class="form-control form-control-sm" name="email" value="{{ q_email }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Status</label>
+        <select class="form-select form-select-sm" name="status">
+          <option value="">Todos</option>
+          {% for s in statuses %}
+          <option value="{{ s }}" {% if q_status==s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <button class="btn btn-sm btn-primary"><i class="bi bi-search me-1"></i>Filtrar</button>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin_bp.admin_payments') }}">Limpar</a>
+      </div>
+      <div class="col-md-3 text-end">
+        <button class="btn btn-sm btn-success" data-bs-toggle="collapse" data-bs-target="#newPay"><i class="bi bi-plus-lg me-1"></i>Lançar pagamento</button>
+      </div>
+    </form>
+
+    <div id="newPay" class="collapse mb-3">
+      <form class="border rounded p-3" method="post" action="{{ url_for('admin_bp.admin_payment_create') }}">
+        <div class="row g-2">
+          <div class="col-md-3"><input class="form-control form-control-sm" name="email" placeholder="E-mail do cliente" required></div>
+          <div class="col-md-2"><input class="form-control form-control-sm" name="amount" placeholder="Valor (R$)" required></div>
+          <div class="col-md-2">
+            <select class="form-select form-select-sm" name="status">
+              <option value="pago">pago</option>
+              <option value="pendente">pendente</option>
+              <option value="falhou">falhou</option>
+              <option value="estornado">estornado</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <select class="form-select form-select-sm" name="provider">
+              <option value="manual">manual</option>
+              <option value="pix">pix</option>
+              <option value="card">cartão</option>
+            </select>
+          </div>
+          <div class="col-md-3"><input class="form-control form-control-sm" name="description" placeholder="Descrição (opcional)"></div>
+        </div>
+        <div class="text-end mt-2"><button class="btn btn-sm btn-success">Salvar</button></div>
+      </form>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle">
+        <thead class="table-light">
+          <tr><th>Data</th><th>Cliente</th><th>Valor</th><th>Status</th><th>Meio</th><th>External ID</th><th>Descrição</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for p in payments %}
+          <tr>
+            <form method="post" action="{{ url_for('admin_bp.admin_payment_update', pay_id=p.id) }}">
+              <td>{{ p.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+              <td>{{ p.user.name }} <span class="text-muted small">({{ p.user.email }})</span></td>
+              <td>R$ {{ '%.2f'|format(p.amount) }}</td>
+              <td>
+                <select class="form-select form-select-sm" name="status">
+                  {% for s in statuses %}
+                    <option value="{{ s }}" {% if p.status==s %}selected{% endif %}>{{ s }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td>
+                <select class="form-select form-select-sm" name="provider">
+                  <option value="manual" {% if p.provider=='manual' %}selected{% endif %}>manual</option>
+                  <option value="pix" {% if p.provider=='pix' %}selected{% endif %}>pix</option>
+                  <option value="card" {% if p.provider=='card' %}selected{% endif %}>cartão</option>
+                </select>
+              </td>
+              <td><input class="form-control form-control-sm" name="external_id" value="{{ p.external_id or '' }}"></td>
+              <td><input class="form-control form-control-sm" name="description" value="{{ p.description or '' }}"></td>
+              <td class="text-end"><button class="btn btn-outline-secondary btn-sm">Salvar</button></td>
+            </form>
+          </tr>
+          {% endfor %}
+          {% if not payments %}
+          <tr><td colspan="8" class="text-center text-muted">Sem registros.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if pagination.pages > 1 %}
+    <nav>
+      <ul class="pagination pagination-sm">
+        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin_bp.admin_payments', page=pagination.prev_num, status=q_status, email=q_email) }}">«</a>
+        </li>
+        {% for p in range(1, pagination.pages+1) %}
+          <li class="page-item {% if p==pagination.page %}active{% endif %}">
+            <a class="page-link" href="{{ url_for('admin_bp.admin_payments', page=p, status=q_status, email=q_email) }}">{{ p }}</a>
+          </li>
+        {% endfor %}
+        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin_bp.admin_payments', page=pagination.next_num, status=q_status, email=q_email) }}">»</a>
+        </li>
+      </ul>
+    </nav>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block title %}Checkout — ZFM Calculator{% endblock %}
+{% block page_title %}<i class="bi bi-credit-card me-1"></i>Checkout{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h6 class="mb-3">Escolha seu plano</h6>
+      <form method="post">
+        <div class="row g-3">
+          {% for p in plans %}
+          <div class="col-md-6">
+            <div class="form-check border rounded p-3 h-100">
+              <input class="form-check-input" type="radio" name="plan" id="pl{{ loop.index }}" value="{{ p.id }}" {% if loop.first %}checked{% endif %}>
+              <label class="form-check-label w-100" for="pl{{ loop.index }}">
+                <div class="d-flex justify-content-between">
+                  <strong>{{ p.name }}</strong>
+                  <span>R$ {{ '%.2f'|format(p.price) }}/mês</span>
+                </div>
+                <div class="text-muted small">{{ p.desc }}</div>
+              </label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <hr>
+        <h6 class="mb-2">Pagamento</h6>
+        <div class="row g-2">
+          <div class="col-md-6"><input class="form-control" placeholder="Titular do cartão"></div>
+          <div class="col-md-6"><input class="form-control" placeholder="Número do cartão"></div>
+          <div class="col-md-4"><input class="form-control" placeholder="Validade (MM/AA)"></div>
+          <div class="col-md-4"><input class="form-control" placeholder="CVV"></div>
+          <div class="col-md-4"><input class="form-control" placeholder="CPF/CNPJ"></div>
+        </div>
+        <button class="btn btn-primary mt-3">Assinar agora</button>
+      </form>
+    </div></div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h6 class="mb-3">Resumo</h6>
+      <div class="d-flex justify-content-between"><span>Plano selecionado</span><strong id="resPlano">—</strong></div>
+      <div class="d-flex justify-content-between border-bottom pb-2"><span>Subtotal</span><strong>R$ 0,00</strong></div>
+      <div class="d-flex justify-content-between pt-2"><span>Total</span><strong>R$ 0,00</strong></div>
+      <div class="small text-muted mt-2">Cobrança recorrente mensal. Você pode cancelar quando quiser.</div>
+    </div></div>
+  </div>
+</div>
+{% endblock %}
