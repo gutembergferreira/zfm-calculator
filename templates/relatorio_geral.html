@@ -3,51 +3,122 @@
 {% block page_title %}<i class="bi bi-graph-up-arrow me-1"></i>Relatório Geral de NF-e{% endblock %}
 {% block content %}
 <div class="container py-4">
-  <div class="card shadow-sm">
-    <div class="card-body">
-      <form class="row gy-2 gx-2 align-items-end mb-3">
-        <div class="col-md-3">
-          <label class="form-label">Início</label>
-          <input type="date" name="start" class="form-control" value="{{ start.strftime('%Y-%m-%d') }}">
+    <div class="card shadow-sm">
+        <div class="card-body">
+
+            <!-- FILTROS -->
+            <form class="row gy-2 gx-2 align-items-end mb-3">
+                <div class="col-md-3">
+                    <label class="form-label">Início</label>
+                    <input type="date" name="start" class="form-control" value="{{ start.strftime('%Y-%m-%d') }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Fim</label>
+                    <input type="date" name="end" class="form-control" value="{{ end.strftime('%Y-%m-%d') }}">
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label">Status</label>
+                    <select class="form-select" name="status">
+                        <option value="" {{ ''==f_status and 'selected' or '' }}>Todos</option>
+                        <option value="conforme" {{ 'conforme'==f_status and 'selected' or '' }}>Conforme</option>
+                        <option value="nao_conforme" {{ 'nao_conforme'==f_status and 'selected' or '' }}>Não conforme</option>
+                        <option value="pending" {{ 'pending'==f_status and 'selected' or '' }}>Pendente</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-2">
+                    <button class="btn btn-primary w-100"><i class="bi bi-search"></i> Filtrar</button>
+                </div>
+            </form>
+            <!-- CARDS DE SOMATÓRIOS -->
+            <div class="row text-center mb-3">
+                <div class="col"><div class="h5 mb-0">{{ tot_notas }}</div><div class="text-muted small">Notas</div></div>
+                <div class="col"><div class="h5 mb-0">R$ {{ soma_total|round(2) }}</div><div class="text-muted small">Total NF</div></div>
+                <div class="col"><div class="h5 mb-0">R$ {{ soma_icms|round(2) }}</div><div class="text-muted small">ICMS</div></div>
+                <div class="col"><div class="h5 mb-0">R$ {{ soma_st|round(2) }}</div><div class="text-muted small">ICMS-ST</div></div>
+            </div>
+
+            <!-- TABELA + SELEÇÃO QUE ENTRA NOS TOTAIS -->
+            <form method="post" action="{{ url_for('files.selecionar_totais') }}">
+                <!-- manter contexto dos filtros -->
+                <input type="hidden" name="start" value="{{ start.strftime('%Y-%m-%d') }}">
+                <input type="hidden" name="end" value="{{ end.strftime('%Y-%m-%d') }}">
+                <input type="hidden" name="status" value="{{ f_status }}">
+                <input type="hidden" name="proc" value="{{ f_proc }}">
+                <input type="hidden" name="in_totals" value="{{ f_totais }}">
+
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle">
+                        <thead>
+                        <tr>
+                            <th style="width:36px;">
+                                <input class="form-check-input" type="checkbox" id="checkAll"
+                                       onclick="document.querySelectorAll('.row-check').forEach(c=>c.checked=this.checked)">
+                            </th>
+                            <th>Emissão</th>
+                            <th>Chave</th>
+                            <th>Emitente</th>
+                            <th>Destinatário</th>
+                            <th>Número/Série</th>
+                            <th>Total</th>
+                            <th>ICMS</th>
+                            <th>ST</th>
+                            <th style="width:180px">Status</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for r in rows %}
+                        <tr>
+                            <td>
+                                <input class="form-check-input row-check" type="checkbox" name="selected[]"
+                                       value="{{ r.id }}" {% if r.include_in_totals %}checked{% endif %}>
+                            </td>
+                            <td>{{ r.emissao.strftime('%d/%m/%Y') if r.emissao else '—' }}</td>
+                            <td class="text-truncate" style="max-width:220px">{{ r.chave or '—' }}</td>
+                            <td class="text-truncate" style="max-width:220px">{{ r.emit_nome or r.emit_cnpj }}</td>
+                            <td class="text-truncate" style="max-width:220px">{{ r.dest_nome or r.dest_cnpj }}</td>
+                            <td>{{ r.numero }}/{{ r.serie }}</td>
+                            <td>R$ {{ r.valor_total|round(2) }}</td>
+                            <td>R$ {{ r.icms|round(2) }}</td>
+                            <td>R$ {{ r.icms_st|round(2) }}</td>
+                            <td>
+                                {% if r.processed_at %}
+                                <span class="badge bg-primary" data-bs-toggle="tooltip" title="XML já processado.">Processado</span>
+                                {% else %}
+                                <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Ainda não processado.">Não processado</span>
+                                {% endif %}
+                                {% set val = r.validation_status or 'pending' %}
+                                {% if val == 'conforme' %}
+                                <span class="badge bg-success" data-bs-toggle="tooltip" title="Conferido e aprovado por você.">Conforme</span>
+                                {% elif val == 'nao_conforme' %}
+                                <span class="badge bg-danger" data-bs-toggle="tooltip" title="Conferido e reprovado por você.">Não conforme</span>
+                                {% else %}
+                                <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Sem conferência manual.">Pendente</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="10" class="text-muted">Sem registros no período.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <button class="btn btn-outline-primary">
+                        <i class="bi bi-check2-square"></i> Aplicar seleção nos totais
+                    </button>
+                </div>
+            </form>
+
         </div>
-        <div class="col-md-3">
-          <label class="form-label">Fim</label>
-          <input type="date" name="end" class="form-control" value="{{ end.strftime('%Y-%m-%d') }}">
-        </div>
-        <div class="col-md-3">
-          <button class="btn btn-primary"><i class="bi bi-search"></i> Filtrar</button>
-        </div>
-      </form>
-      <div class="row text-center mb-3">
-        <div class="col"><div class="h5 mb-0">{{ tot_notas }}</div><div class="text-muted small">Notas</div></div>
-        <div class="col"><div class="h5 mb-0">R$ {{ soma_total|round(2) }}</div><div class="text-muted small">Total NF</div></div>
-        <div class="col"><div class="h5 mb-0">R$ {{ soma_icms|round(2) }}</div><div class="text-muted small">ICMS</div></div>
-        <div class="col"><div class="h5 mb-0">R$ {{ soma_st|round(2) }}</div><div class="text-muted small">ICMS-ST</div></div>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-sm table-striped align-middle">
-          <thead><tr>
-            <th>Emissão</th><th>Chave</th><th>Emitente</th><th>Destinatário</th><th>Número/Série</th><th>Total</th><th>ICMS</th><th>ST</th>
-          </tr></thead>
-          <tbody>
-            {% for r in rows %}
-            <tr>
-              <td>{{ r.emissao.strftime('%d/%m/%Y') if r.emissao else '—' }}</td>
-              <td class="text-truncate" style="max-width:220px">{{ r.chave or '—' }}</td>
-              <td class="text-truncate" style="max-width:200px">{{ r.emit_nome or r.emit_cnpj }}</td>
-              <td class="text-truncate" style="max-width:200px">{{ r.dest_nome or r.dest_cnpj }}</td>
-              <td>{{ r.numero }}/{{ r.serie }}</td>
-              <td>R$ {{ r.valor_total|round(2) }}</td>
-              <td>R$ {{ r.icms|round(2) }}</td>
-              <td>R$ {{ r.icms_st|round(2) }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="8" class="text-muted">Sem registros no período.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
     </div>
-  </div>
 </div>
+
+<!-- tooltips -->
+<script>
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el){
+        new bootstrap.Tooltip(el);
+    });
+</script>
 {% endblock %}

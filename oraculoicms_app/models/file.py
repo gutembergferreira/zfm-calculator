@@ -7,6 +7,7 @@ from ..extensions import db
 class UserFile(db.Model):
     __tablename__ = "user_files"
     id = db.Column(db.Integer, primary_key=True)
+    display_name = db.Column(db.String(255))
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), index=True, nullable=False)
     filename = db.Column(db.String(255), nullable=False)
     storage_path = db.Column(db.String(512), nullable=False)  # caminho absoluto/relativo no FS
@@ -21,6 +22,9 @@ class NFESummary(db.Model):
     __tablename__ = "nfe_summaries"
     id = db.Column(db.Integer, primary_key=True)
     user_file_id = db.Column(db.Integer, db.ForeignKey("user_files.id"), unique=True, nullable=False)
+    processed_at = db.Column(db.DateTime)  # quando processou o XML
+    validation_status = db.Column(db.String(16), default="pending", index=True)  # pending|conforme|nao_conforme
+    include_in_totals = db.Column(db.Boolean, default=True, index=True)
     # campos comuns de NFe
     chave = db.Column(db.String(60), index=True)
     emit_cnpj = db.Column(db.String(20), index=True)
@@ -37,6 +41,9 @@ class NFESummary(db.Model):
     ipi = db.Column(db.Numeric(14,2), default=0)
     pis = db.Column(db.Numeric(14,2), default=0)
     cofins = db.Column(db.Numeric(14,2), default=0)
+    calc_json = db.Column(db.Text)  # cache do cálculo (JSON)
+    calc_version = db.Column(db.String(20))  # versão do algoritmo
+    calc_at = db.Column(db.DateTime)  # quando foi calculado
     # JSON agregado com totais por CST/CFOP/NCM etc.
     meta_json = db.Column(db.Text)  # compact JSON string
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

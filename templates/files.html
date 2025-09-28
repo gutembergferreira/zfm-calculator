@@ -3,58 +3,147 @@
 {% block page_title %}<i class="bi bi-filetype-xml me-1"></i>Meus XMLs{% endblock %}
 {% block content %}
 <div class="container py-4">
-  <div class="card shadow-sm">
-    <div class="card-body">
-      <form class="d-flex gap-2 mb-3" method="post" action="{{ url_for('files.upload_xml') }}" enctype="multipart/form-data">
-        <input class="form-control" type="file" name="xml" accept=".xml" required>
-        <button class="btn btn-primary"><i class="bi bi-cloud-upload"></i> Enviar XML</button>
-      </form>
-      <div class="table-responsive">
-        <table class="table table-sm table-striped align-middle">
-          <thead><tr>
-            <th>Arquivo</th><th>Tamanho</th><th>Enviado em</th><th>Ações</th>
-          </tr></thead>
-          <tbody>
-            {% for f in files %}
-            <tr>
-              <td>{{ f.filename }}</td>
-              <td>{{ (f.size_bytes/1048576)|round(2) }} MB</td>
-              <td>{{ f.uploaded_at.strftime("%d/%m/%Y %H:%M") }}</td>
-                <td class="d-flex gap-2">
-                    <!-- Ver (preview em nova aba pode manter target) -->
-                    <a class="btn btn-outline-secondary btn-sm"
-                       href="{{ url_for('files.preview_xml', file_id=f.id) }}" target="_blank">
-                        <i class="bi bi-file-earmark-text"></i> Ver
-                    </a>
-
-                    {% if f.nfe_summary %}
-                    <span class="badge bg-success align-self-center">Processado</span>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form class="row gy-2 gx-2 align-items-end mb-3"
+                  method="post" action="{{ url_for('files.upload_xml') }}" enctype="multipart/form-data">
+                <div class="col-md-6">
+                    <label class="form-label">Arquivo XML</label>
+                    <input class="form-control" type="file" name="xml" accept=".xml" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Nome amigável (opcional)</label>
+                    <input class="form-control" type="text" name="display_name" placeholder="Ex.: NF Saída 354009">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label opacity-0 d-block">.</label>
+                    <button class="btn btn-primary w-100">
+                        <i class="bi bi-cloud-upload"></i> Enviar XML
+                    </button>
+                </div>
+            </form>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped align-middle">
+                    <thead><tr>
+                        <th>Arquivo</th>
+                        <th>Tamanho</th>
+                        <th style="width: 220px">Status</th>
+                        <th style="width: 220px">Ações</th>
+                        <th>Enviado em</th>
+                        <th style="width: 1%"></th>
+                    </tr></thead>
+                    <tbody>
+                    {% for f in files %}
+                    <tr>
+                        <td>{{ f.display_name or f.filename }}</td>
+                        <td>{{ (f.size_bytes/1048576)|round(2) }} MB</td>
+                        <td>
+                            {% if f.nfe_summary %}
+                            <span class="badge bg-primary" data-bs-toggle="tooltip" title="Arquivo já foi processado e tem resumo salvo.">Processado</span>
+                            {% set val = f.nfe_summary.validation_status or 'pending' %}
+                            {% if val == 'conforme' %}
+                            <span class="badge bg-success" data-bs-toggle="tooltip" title="Você marcou que os cálculos conferem.">Conforme</span>
+                            {% elif val == 'nao_conforme' %}
+                            <span class="badge bg-danger" data-bs-toggle="tooltip" title="Você marcou que há divergência nos cálculos.">Não conforme</span>
+                            {% else %}
+                            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Ainda não validado por você.">Pendente</span>
+                            {% endif %}
+                            {% else %}
+                            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Ainda não processado.">Não processado</span>
+                            {% endif %}
+                            <a href="#" class="ms-1 text-muted" data-bs-toggle="modal" data-bs-target="#statusHelp">
+                                <i class="bi bi-info-circle"></i>
+                            </a>
+                        </td>
+                        <td class="">
+                            <div class="">
+                                <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                                    Ações
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    {% if not f.nfe_summary %}
+                                    <li>
+                                        <form method="post" action="{{ url_for('files.parse_xml', file_id=f.id) }}">
+                                            <button class="dropdown-item"><i class="bi bi-gear"></i> Processar</button>
+                                        </form>
+                                    </li>
+                                    {% else %}
+                                    <li class="dropdown-header">Validação</li>
+                                    <li>
+                                        <form method="post" action="{{ url_for('files.marcar_status', file_id=f.id, status='conforme') }}">
+                                            <button class="dropdown-item text-success"><i class="bi bi-shield-check"></i> Marcar como conforme</button>
+                                        </form>
+                                    </li>
+                                    <li>
+                                        <form method="post" action="{{ url_for('files.marcar_status', file_id=f.id, status='nao_conforme') }}">
+                                            <button class="dropdown-item text-danger"><i class="bi bi-x-octagon"></i> Marcar como não conforme</button>
+                                        </form>
+                                    </li>
+                                    <li>
+                                        <form method="post" action="{{ url_for('files.marcar_status', file_id=f.id, status='pending') }}">
+                                            <button class="dropdown-item"><i class="bi bi-hourglass"></i> Marcar como pendente</button>
+                                        </form>
+                                    </li>
+                                    {% endif %}
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li>
+                                        <form method="post" action="{{ url_for('files.deletar_xml', file_id=f.id) }}"
+                                              onsubmit="return confirm('Confirma excluir?');">
+                                            <button class="dropdown-item text-danger"><i class="bi bi-trash"></i> Excluir</button>
+                                        </form>
+                                    </li>
+                                </ul>
+                            </div>
+                        </td>
+                        <td>{{ f.uploaded_at.strftime("%d/%m/%Y %H:%M") }}</td>
+                        <td class="d-flex gap-2 align-items-center">
+                            <a class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1"
+                               href="{{ url_for('files.preview_xml', file_id=f.id) }}">
+                                <i class="bi bi-search"></i><span>Ver_NFe</span>
+                            </a>
+                            {# Visualizar cálculo (habilita só se processado) #}
+                            {% set pode_calculo = f.nfe_summary and f.nfe_summary.processed_at %}
+                            {% if pode_calculo %}
+                            <a class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
+                               href="{{ url_for('files.ver_calculo', file_id=f.id) }}">
+                                <i class="bi bi-clipboard-data"></i><span>Ver_Cálculo</span>
+                            </a>
+                            {% else %}
+                            <a class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1 disabled"
+                               href="#"
+                               tabindex="-1" aria-disabled="true"
+                               data-bs-toggle="tooltip" title="Disponível após Processar o XML">
+                                <i class="bi bi-clipboard-data"></i><span>Ver_cálculo</span>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
                     {% else %}
-                    <form method="post" action="{{ url_for('files.parse_xml', file_id=f.id) }}" class="d-inline">
-                        <button class="btn btn-outline-primary btn-sm">
-                            <i class="bi bi-gear"></i> Processar
-                        </button>
-                    </form>
-                    {% endif %}
-
-                    <form method="post" action="{{ url_for('files.deletar_xml', file_id=f.id) }}"
-                          onsubmit="return confirm('Confirma excluir?');" class="d-inline">
-                        <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> Excluir</button>
-                    </form>
-                </td>
-
-            </tr>
-            {% else %}
-            <tr><td colspan="4" class="text-muted">Sem arquivos ainda.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <hr>
-      <div class="d-flex justify-content-end">
-        <a class="btn btn-success" href="{{ url_for('files.relatorio_nfe') }}"><i class="bi bi-graph-up"></i> Relatório Geral</a>
-      </div>
+                    <tr><td colspan="4" class="text-muted">Sem arquivos ainda.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <hr>
+            <div class="d-flex justify-content-end">
+                <a class="btn btn-success" href="{{ url_for('files.relatorio_nfe') }}"><i class="bi bi-graph-up"></i> Relatório Geral</a>
+            </div>
+        </div>
     </div>
-  </div>
 </div>
+<div class="modal fade" id="statusHelp" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">O que significam os status?</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+            <p><span class="badge bg-primary">Processado</span> – O XML já foi lido e os totais foram gravados.</p>
+            <p><span class="badge bg-secondary">Não Processado</span> – Ainda não foi processado pelo sistema.</p>
+            <p><span class="badge bg-success">Conforme</span> – Você conferiu e aprovou os cálculos.</p>
+            <p><span class="badge bg-danger">Não conforme</span> – Você conferiu e reprovou os cálculos.</p>
+            <p><span class="badge bg-secondary">Pendente</span> – Ainda não houve conferência manual.</p>
+        </div>
+    </div></div>
+</div>
+
 {% endblock %}
