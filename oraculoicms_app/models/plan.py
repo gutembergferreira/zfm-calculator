@@ -29,6 +29,11 @@ class Plan(db.Model):
     provider_month_price_id = db.Column(db.String(120))
     provider_year_price_id  = db.Column(db.String(120))
 
+    # Stripe
+    stripe_price_monthly_id = db.Column(db.String(80))  # price_xxx mensal
+    stripe_price_yearly_id = db.Column(db.String(80))  # price_xxx anual
+    trial_days = db.Column(db.Integer, default=0)  # ex.: 7
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

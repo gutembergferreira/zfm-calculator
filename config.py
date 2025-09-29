@@ -43,3 +43,8 @@ class Config:
     DB_SSLMODE = os.getenv("DB_SSLMODE")
     if DB_SSLMODE:
         SQLALCHEMY_ENGINE_OPTIONS["connect_args"] = {"sslmode": DB_SSLMODE}
+    STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+    STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
+    STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", "http://localhost:5000/billing/sucesso")
+    STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", "http://localhost:5000/billing/cancelado")
