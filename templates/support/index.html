@@ -1,0 +1,149 @@
+{% extends 'base.html' %}
+{% block title %}Suporte & Base de conhecimento{% endblock %}
+{% block page_title %}<i class="bi bi-life-preserver me-1"></i>Suporte & Base de conhecimento{% endblock %}
+{% block content %}
+<div class="container py-3">
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <form class="input-group mb-3">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text" class="form-control" name="q" placeholder="Busque por dúvidas, tutoriais e guias" value="{{ q }}">
+        <button class="btn btn-primary">Buscar</button>
+      </form>
+
+      <div class="accordion" id="kb-acc">
+        {% for a in articles %}
+        <div class="accordion-item">
+          <h2 class="accordion-header">
+            <button class="accordion-button {{ not loop.first and 'collapsed' or '' }}" type="button" data-bs-toggle="collapse" data-bs-target="#k{{ a.id }}">
+              {{ a.title }}
+            </button>
+          </h2>
+          <div id="k{{ a.id }}" class="accordion-collapse collapse {{ loop.first and 'show' or '' }}" data-bs-parent="#kb-acc">
+            <div class="accordion-body">
+              <div class="prose">{{ a.body_html|safe }}</div>
+              {% if a.tags %}<div class="mt-2 text-muted small">Tags: {{ a.tags }}</div>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-muted">Nenhum artigo.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card mb-3">
+        <div class="card-header">Fale com a gente</div>
+        <div class="card-body">
+          <form method="post" action="{{ url_for('support.send_feedback') }}">
+            <div class="mb-2">
+              <label class="form-label">Categoria</label>
+              <select class="form-select" name="category" required>
+                <option value="sugestao">Sugestão</option>
+                <option value="erro">Erro</option>
+                <option value="comentario">Comentário</option>
+                <option value="suporte">Suporte</option>
+              </select>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Assunto</label>
+              <input class="form-control" name="subject" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Mensagem</label>
+              <textarea class="form-control" name="message" rows="4" required></textarea>
+            </div>
+            <button class="btn btn-primary w-100"><i class="bi bi-send"></i> Enviar</button>
+          </form>
+        </div>
+      </div>
+
+      {% if campaign %}
+      <div class="card mb-3">
+        <div class="card-header">Pesquisa de satisfação</div>
+        <div class="card-body">
+          <p>{{ campaign.title }}</p>
+          <a class="btn btn-warning w-100" href="{{ url_for('support.survey_start') }}"><i class="bi bi-star-half"></i> Responder pesquisa</a>
+        </div>
+      </div>
+      {% endif %}
+
+<div class="card shadow-sm">
+  <div class="card-header">Tutoriais em vídeo</div>
+  <div class="card-body">
+
+    {% if videos %}
+    <div id="videoCarousel" class="carousel slide" data-bs-ride="false">
+      <div class="carousel-inner">
+
+        {% for v in videos %}
+        <div class="carousel-item {% if loop.first %}active{% endif %}">
+          <div class="ratio ratio-16x9 mb-2">
+            <iframe
+              class="yt-frame"
+              src="{{ v.embed_url }}"
+              title="{{ v.title }}"
+              frameborder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowfullscreen
+              referrerpolicy="strict-origin-when-cross-origin">
+            </iframe>
+          </div>
+          <div class="small text-muted">{{ v.title }}</div>
+        </div>
+        {% endfor %}
+
+      </div>
+
+      <button class="carousel-control-prev" type="button" data-bs-target="#videoCarousel" data-bs-slide="prev">
+        <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+        <span class="visually-hidden">Anterior</span>
+      </button>
+      <button class="carousel-control-next" type="button" data-bs-target="#videoCarousel" data-bs-slide="next">
+        <span class="carousel-control-next-icon" aria-hidden="true"></span>
+        <span class="visually-hidden">Próximo</span>
+      </button>
+
+      <div class="carousel-indicators" style="position: static; margin-top: .5rem;">
+        {% for v in videos %}
+        <button type="button" data-bs-target="#videoCarousel" data-bs-slide-to="{{ loop.index0 }}"
+                class="{% if loop.first %}active{% endif %}"
+                aria-current="{% if loop.first %}true{% else %}false{% endif %}"
+                aria-label="Slide {{ loop.index }}"></button>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+      <div class="text-muted">Nenhum vídeo publicado.</div>
+    {% endif %}
+
+  </div>
+</div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block body_extra %}
+{{ super() }}
+<script>
+  (function(){
+    const car = document.getElementById('videoCarousel');
+    if (!car) return;
+
+    car.addEventListener('slide.bs.carousel', function (ev) {
+      // Pausa o vídeo do slide que está saindo (resetando src)
+      const from = ev.relatedTarget ? ev.from : this.querySelector('.carousel-item.active');
+      const active = this.querySelector('.carousel-item.active');
+      const item = active || from;
+      if (!item) return;
+      const iframe = item.querySelector('iframe.yt-frame');
+      if (iframe) {
+        const src = iframe.getAttribute('src');
+        iframe.setAttribute('src', src); // reset = pausa
+      }
+    }, {passive:true});
+  })();
+</script>
+{% endblock %}

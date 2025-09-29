@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Suporte — Admin{% endblock %}
+{% block page_title %}<i class="bi bi-tools me-1"></i>Suporte — Administração{% endblock %}
+{% block content %}
+<div class="container py-3">
+  <div class="row g-3">
+    <div class="col-md-4">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted">Feedbacks (totais)</div>
+          <div class="display-6">{{ total_fb }}</div>
+          <div class="small text-muted">Abertos/pendentes: {{ abertos }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-8">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div>Campanhas recentes</div>
+          <a class="btn btn-primary btn-sm" href="{{ url_for('support_admin.camp_new') }}"><i class="bi bi-plus-lg"></i> Nova campanha</a>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>Título</th><th>Ativa</th><th>Período</th><th class="text-end">Ações</th></tr></thead>
+            <tbody>
+              {% for c in camps %}
+              <tr>
+                <td>{{ c.title }}</td>
+                <td>
+                  {% if c.active %}<span class="badge bg-success">Ativa</span>{% else %}<span class="badge bg-secondary">Inativa</span>{% endif %}
+                </td>
+                <td class="small">
+                  {{ c.starts_at or '—' }} — {{ c.ends_at or '—' }}
+                </td>
+                <td class="text-end">
+                  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('support_admin.camp_edit', id=c.id) }}"><i class="bi bi-pencil-square"></i></a>
+                  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('support_admin.camp_questions', id=c.id) }}"><i class="bi bi-list-check"></i></a>
+                  <a class="btn btn-outline-primary btn-sm" href="{{ url_for('support_admin.camp_report', id=c.id) }}"><i class="bi bi-graph-up"></i></a>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-muted">Sem campanhas.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

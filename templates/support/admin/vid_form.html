@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ row and 'Editar' or 'Novo' }} vídeo{% endblock %}
+{% block page_title %}<i class="bi bi-collection-play me-1"></i>{{ row and 'Editar' or 'Novo' }} vídeo{% endblock %}
+{% block content %}
+<div class="container py-3">
+  <form method="post">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Título</label>
+          <input class="form-control" name="title" value="{{ row and row.title or '' }}" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">URL de incorporação (YouTube /embed/...)</label>
+          <input class="form-control" name="embed_url" value="{{ row and row.embed_url or '' }}" required>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-2">
+            <label class="form-label">Ordem</label>
+            <input class="form-control" type="number" name="order" value="{{ row and row.order or 0 }}">
+          </div>
+          <div class="col-md-4 d-flex align-items-end">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="pub" name="is_published" {% if not row or row.is_published %}checked{% endif %}>
+              <label class="form-check-label" for="pub">Publicado</label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-footer d-flex justify-content-between">
+        <a class="btn btn-outline-secondary" href="{{ url_for('support_admin.vid_list') }}">Voltar</a>
+        <button class="btn btn-primary">Salvar</button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

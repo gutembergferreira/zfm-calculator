@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Relatório — {{ camp.title }}{% endblock %}
+{% block page_title %}<i class="bi bi-graph-up me-1"></i>Relatório da campanha — {{ camp.title }}{% endblock %}
+{% block content %}
+<div class="container py-3">
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card shadow-sm">
+        <div class="card-header">Médias por pergunta</div>
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead class="table-light"><tr><th>#</th><th>Pergunta</th><th>Respostas</th><th>Média</th></tr></thead>
+            <tbody>
+              {% for a in agg %}
+              <tr>
+                <td class="text-muted">{{ a.q.id }}</td>
+                <td>{{ a.q.text }}</td>
+                <td>{{ a.count }}</td>
+                <td><span class="badge bg-warning text-dark">{{ a.avg }}</span></td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-muted">Sem dados.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card shadow-sm">
+        <div class="card-header">Comentários recentes</div>
+        <div class="list-group list-group-flush">
+          {% for ans in comments %}
+          <div class="list-group-item">
+            <div class="small text-muted">{{ ans.question.text }}</div>
+            <div>{{ ans.comment }}</div>
+            <div class="small text-muted">Nota: {{ ans.rating }}</div>
+          </div>
+          {% else %}
+          <div class="list-group-item text-muted">Sem comentários.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

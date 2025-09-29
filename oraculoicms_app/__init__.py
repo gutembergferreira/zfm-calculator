@@ -11,6 +11,8 @@ from .blueprints.core import bp as core_bp
 from .blueprints.auth import bp as auth_bp
 from .blueprints.nfe import bp as nfe_bp
 from .blueprints.files import bp as files_bp
+from oraculoicms_app.blueprints.support import bp as support_bp
+from oraculoicms_app.blueprints.support_admin import bp as support_admin_bp
 
 def create_app(config_object: type[Config] = Config) -> Flask:
     app = Flask(__name__, template_folder="../templates", static_folder="../static")
@@ -29,6 +31,8 @@ def create_app(config_object: type[Config] = Config) -> Flask:
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(nfe_bp)
     app.register_blueprint(files_bp)
+    app.register_blueprint(support_bp)
+    app.register_blueprint(support_admin_bp)
     # CLI (ex.: flask init-db)
     register_cli(app)
 

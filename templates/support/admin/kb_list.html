@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Artigos — Admin{% endblock %}
+{% block page_title %}<i class="bi bi-journal-text me-1"></i>Artigos da Base de Conhecimento{% endblock %}
+{% block content %}
+<div class="container py-3">
+  <div class="d-flex justify-content-between mb-3">
+    <form class="d-flex gap-2">
+      <input name="q" class="form-control" placeholder="Buscar título/tags...">
+      <button class="btn btn-outline-secondary"><i class="bi bi-search"></i></button>
+    </form>
+    <a class="btn btn-primary" href="{{ url_for('support_admin.kb_new') }}"><i class="bi bi-plus-lg"></i> Novo artigo</a>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light"><tr><th>#</th><th>Título</th><th>Tags</th><th>Ordem</th><th>Publicado</th><th class="text-end">Ações</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="text-muted">{{ r.id }}</td>
+            <td>{{ r.title }}</td>
+            <td class="text-muted">{{ r.tags }}</td>
+            <td>{{ r.order }}</td>
+            <td>{% if r.is_published %}<span class="badge bg-success">Sim</span>{% else %}<span class="badge bg-secondary">Não</span>{% endif %}</td>
+            <td class="text-end">
+              <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('support_admin.kb_edit', id=r.id) }}"><i class="bi bi-pencil-square"></i></a>
+              <form method="post" action="{{ url_for('support_admin.kb_delete', id=r.id) }}" class="d-inline" onsubmit="return confirm('Excluir?')">
+                <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-muted">Nenhum artigo.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

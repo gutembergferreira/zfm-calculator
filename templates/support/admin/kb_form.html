@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}{{ row and 'Editar' or 'Novo' }} artigo{% endblock %}
+{% block page_title %}<i class="bi bi-journal-plus me-1"></i>{{ row and 'Editar' or 'Novo' }} artigo{% endblock %}
+
+{% block head_extra %}
+<link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
+<style>.ql-editor{min-height:240px}</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+  <form method="post">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Título</label>
+          <input class="form-control" name="title" value="{{ row and row.title or '' }}" required>
+        </div>
+<div class="mb-3">
+  <label class="form-label">Conteúdo (Editor)</label>
+  <div id="editor">{% if row %}{{ row.body_html|safe }}{% endif %}</div>
+  {# antes: <textarea id="body_html" name="body_html" class="d-none" required></textarea> #}
+  <input type="hidden" id="body_html" name="body_html">
+</div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Tags (separadas por vírgula)</label>
+            <input class="form-control" name="tags" value="{{ row and row.tags or '' }}">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Ordem</label>
+            <input class="form-control" type="number" name="order" value="{{ row and row.order or 0 }}">
+          </div>
+          <div class="col-md-4 d-flex align-items-end">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="pub" name="is_published" {% if not row or row.is_published %}checked{% endif %}>
+              <label class="form-check-label" for="pub">Publicado</label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-footer d-flex justify-content-between">
+        <a class="btn btn-outline-secondary" href="{{ url_for('support_admin.kb_list') }}">Voltar</a>
+        <button class="btn btn-primary">Salvar</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+
+
+{% endblock %}
+
+{% block body_extra %}
+<script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+<script>
+  const quill = new Quill('#editor', {
+    theme: 'snow',
+    modules: {
+      toolbar: [
+        [{ header: [1, 2, false] }],
+        ['bold', 'italic', 'underline'],
+        ['link', 'blockquote', 'code-block'],
+        [{ list: 'ordered' }, { list: 'bullet' }],
+        ['clean']
+      ]
+    }
+  });
+
+  const form = document.querySelector('form');
+  form.addEventListener('submit', (e) => {
+    const html = quill.root.innerHTML.trim();
+    const text = quill.getText().trim();
+
+    // validação amigável do conteúdo
+    if (!text || text === '') {
+      e.preventDefault();
+      alert('Informe o conteúdo do artigo.');
+      quill.focus();
+      return;
+    }
+    // alguns editores “vazios” ficam como <p><br></p>
+    if (html === '<p><br></p>') {
+      e.preventDefault();
+      alert('Informe o conteúdo do artigo.');
+      quill.focus();
+      return;
+    }
+
+    document.getElementById('body_html').value = html;
+  });
+</script>
+
+{% endblock %}

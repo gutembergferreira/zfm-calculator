@@ -16,11 +16,13 @@ from oraculoicms_app.models.file import NFESummary, UserFile
 from .files import current_user  # usa o helper que criamos
 from datetime import datetime
 
+from .nfe_indexer import upsert_summary_from_xml
+
 bp = Blueprint("nfe", __name__)
 ALLOWED_EXT = {"xml"}
 
 # --- helper: um único lugar com a regra de cálculo ---
-ALG_VERSION = "st-v1"  # mude se alterar a lógica e quiser invalidar caches
+ALG_VERSION = "st-v1"
 
 def _compute_st_payload(xml_bytes, NFEXML, get_motor):
     nfe = NFEXML(xml_bytes)
@@ -35,16 +37,12 @@ def _compute_st_payload(xml_bytes, NFEXML, get_motor):
     for it in itens:
         r = motor.calcula_st(it, uf_origem, uf_destino, usar_multiplicador=True)
         m = r.memoria
-
         def f(v, d=0.0):
             try: return float(v if v is not None else d)
             except: return float(d)
-
         qCom=f(it.qCom); vUnCom=f(it.vUnCom); vProd=f(it.vProd)
         vFrete=f(it.vFrete); vIPI=f(it.vIPI); vOutro=f(it.vOutro)
-        vICMSDeson_xml=f(it.vICMSDeson)
-        vICMSDeson=f(m.get("ICMS DESONERADO", vICMSDeson_xml))
-
+        vICMSDeson=f(m.get("ICMS DESONERADO", it.vICMSDeson))
         venda_desc_icms=f(m.get("VALOR DA VENDA COM DESCONTO DE ICMS", m.get("venda_desc_icms", 0.0)))
         valor_oper=f(m.get("VALOR DA OPERAÇÃO", venda_desc_icms))
         mva_percent=f(m.get("MARGEM_DE_VALOR_AGREGADO_MVA", m.get("mva_percentual_aplicado", 0.0)))
@@ -78,7 +76,7 @@ def _compute_st_payload(xml_bytes, NFEXML, get_motor):
             "mult_sefaz": mult_sefaz,
             "icms_retido": icms_retido,
 
-            # aliases que seus templates usam
+            # aliases esperados no template
             "valor_operacao": valor_oper,
             "mva_percentual": mva_percent,
             "multiplicador": mult_sefaz,
@@ -93,12 +91,8 @@ def _compute_st_payload(xml_bytes, NFEXML, get_motor):
         })
         total_st += float(r.icms_st_devido or 0.0)
 
-    return {
-        "uf_origem": uf_origem,
-        "uf_destino": uf_destino,
-        "linhas": linhas,
-        "total_st": total_st,
-    }
+    return {"uf_origem": uf_origem, "uf_destino": uf_destino, "linhas": linhas, "total_st": total_st}
+
 
 
 def allowed(filename: str) -> bool:
@@ -165,38 +159,25 @@ def calcular():
     import hashlib, datetime, json as _json
     md5 = hashlib.md5(xml_bytes).hexdigest()
 
-    # localizar upload do usuário por md5 (se existir)
+    # tenta achar o upload desse XML
     uf = (UserFile.query
           .filter_by(user_id=current_user().id, md5=md5, deleted_at=None)
-          .order_by(UserFile.id.desc())
-          .first())
+          .order_by(UserFile.id.desc()).first())
 
-    # tenta garantir summary (indexar p/ relatório), reaproveitando se já existir
+    # garante summary (indexado p/ relatório)
     summary = None
     try:
         if uf:
-            # upsert devolve o summary do próprio arquivo do usuário
             summary, _ = upsert_summary_from_xml(
                 db, NFEXML, NFESummary, UserFile, current_user().id, xml_bytes, uf.id
             )
-        else:
-            # sem upload correspondente: tenta achar por chave para o usuário
-            nfe = NFEXML(xml_bytes); header = nfe.header() or {}
-            chave = header.get("chave")
-            if chave:
-                summary = (db.session.query(NFESummary)
-                           .join(UserFile, NFESummary.user_file_id==UserFile.id)
-                           .filter(UserFile.user_id==current_user().id, NFESummary.chave==chave)
-                           .first())
     except Exception as e:
         current_app.logger.warning("indexer falhou: %s", e)
-        # segue sem summary (somente renderização)
 
-    # Se houver cache válido, usa e retorna já
+    # usa cache se disponível e na mesma versão
     if summary and summary.calc_json and summary.calc_version == ALG_VERSION:
         payload = _json.loads(summary.calc_json)
-        return render_template(
-            "resultado.html",
+        return render_template("resultado.html",
             linhas=payload.get("linhas", []),
             total_st=float(payload.get("total_st", 0)),
             uf_origem=payload.get("uf_origem", "SP"),
@@ -204,10 +185,8 @@ def calcular():
             payload_json=_json.dumps(payload, ensure_ascii=False)
         )
 
-    # Calcula usando o helper (uma única fonte de verdade)
+    # calcula e salva cache
     payload = _compute_st_payload(xml_bytes, NFEXML, get_motor)
-
-    # Salva cache (se houver summary)
     if summary:
         summary.calc_json    = _json.dumps(payload, ensure_ascii=False)
         summary.calc_version = ALG_VERSION
@@ -216,14 +195,12 @@ def calcular():
             summary.processed_at = datetime.datetime.utcnow()
         db.session.add(summary); db.session.commit()
 
-    return render_template(
-        "resultado.html",
-        linhas=payload["linhas"],
-        total_st=payload["total_st"],
-        uf_origem=payload["uf_origem"],
-        uf_destino=payload["uf_destino"],
+    return render_template("resultado.html",
+        linhas=payload["linhas"], total_st=payload["total_st"],
+        uf_origem=payload["uf_origem"], uf_destino=payload["uf_destino"],
         payload_json=_json.dumps(payload, ensure_ascii=False)
     )
+
 
 
 

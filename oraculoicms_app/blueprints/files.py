@@ -3,21 +3,108 @@
 from __future__ import annotations
 import os, hashlib, datetime, json
 from pathlib import Path
-from flask import Blueprint, current_app, request, render_template, redirect, url_for, flash, send_file, abort, session
+from flask import Blueprint, current_app, request, render_template, redirect, url_for, flash, send_file, abort, session, jsonify
 from werkzeug.utils import secure_filename
+
+from oraculoicms_app.blueprints.nfe_indexer import upsert_summary_from_xml
 from oraculoicms_app.decorators import login_required
 from oraculoicms_app.extensions import db
 from oraculoicms_app.models.user import User
 from oraculoicms_app.models.plan import Plan
 from oraculoicms_app.models.file import UserFile, NFESummary, AuditLog
+from oraculoicms_app.services.calc_service import get_motor
 from xml_parser import NFEXML
 from oraculoicms_app.models.user_quota import UserQuota
 from base64 import b64encode
 from xml.etree import ElementTree as ET
-from .nfe_indexer import upsert_summary_from_xml
+
+
 bp = Blueprint("files", __name__)
 
 ALLOWED = {'.xml', '.XML'}
+
+# ——————————————————————————————————————————————————————————————
+# CÁLCULO ST — helper local para evitar import circular com nfe.py
+# ——————————————————————————————————————————————————————————————
+ALG_VERSION = "st-v1"
+
+def _compute_st_payload(xml_bytes: bytes, NFEXML, get_motor):
+    nfe = NFEXML(xml_bytes)
+    header = nfe.header() or {}
+    itens  = nfe.itens() or []
+
+    uf_origem  = (header.get("uf_origem")  or "SP").upper()
+    uf_destino = (header.get("uf_destino") or "AM").upper()
+
+    motor = get_motor()
+    linhas, total_st = [], 0.0
+
+    def fnum(v, d=0.0):
+        try:
+            return float(v if v is not None else d)
+        except Exception:
+            return float(d)
+
+    for it in itens:
+        r = motor.calcula_st(it, uf_origem, uf_destino, usar_multiplicador=True)
+        m = r.memoria
+
+        qCom   = fnum(it.qCom);    vUnCom = fnum(it.vUnCom); vProd  = fnum(it.vProd)
+        vFrete = fnum(it.vFrete);  vIPI   = fnum(it.vIPI);   vOutro = fnum(it.vOutro)
+        vICMSDeson_xml = fnum(it.vICMSDeson)
+        vICMSDeson = fnum(m.get("ICMS DESONERADO", vICMSDeson_xml))
+
+        venda_desc_icms = fnum(m.get("VALOR DA VENDA COM DESCONTO DE ICMS", m.get("venda_desc_icms", 0.0)))
+        valor_oper = fnum(m.get("VALOR DA OPERAÇÃO", venda_desc_icms))
+        mva_percent = fnum(m.get("MARGEM_DE_VALOR_AGREGADO_MVA", m.get("mva_percentual_aplicado", 0.0)))
+        valor_agregado = fnum(m.get("VALOR AGREGADO", 0.0))
+        base_st = fnum(m.get("BASE_ST", m.get("BASE DE CÁLCULO SUBSTITUIÇÃO TRIBUTÁRIA", 0.0)))
+        aliq_st = fnum(m.get("ALÍQUOTA ICMS-ST", m.get("aliq_interna", 0.0)))
+        icms_teorico_dest = fnum(m.get("icms_teorico_dest", 0.0))
+        icms_origem_calc  = fnum(m.get("icms_origem_calc", vICMSDeson))
+        icms_st = fnum(m.get("VALOR_ICMS_ST", 0.0))
+        saldo_devedor = fnum(m.get("SALDO_DEVEDOR_ST", m.get("VALOR SALDO DEVEDOR ICMS ST", 0.0)))
+        mult_sefaz = fnum(m.get("MULT_SEFAZ", m.get("Multiplicador", m.get("MULTIPLICADOR SEFAZ", 0.0))))
+        icms_retido = fnum(m.get("VALOR ICMS RETIDO", m.get("icms_retido", saldo_devedor)))
+
+        linhas.append({
+            "idx": it.nItem, "cProd": it.cProd, "xProd": it.xProd,
+            "ncm": it.ncm, "cst": it.cst, "cfop": it.cfop,
+            "qCom": qCom, "vUnCom": vUnCom, "vProd": vProd,
+            "vFrete": vFrete, "vIPI": vIPI, "vOutro": vOutro,
+            "vICMSDeson": vICMSDeson,
+            "venda_desc_icms": venda_desc_icms,
+            "valor_oper": valor_oper,
+            "mva_tipo": m.get("mva_tipo", "MVA Padrão"),
+            "mva_percent": mva_percent,
+            "valor_agregado": valor_agregado,
+            "base_st": base_st,
+            "aliq_st": aliq_st,
+            "icms_teorico_dest": icms_teorico_dest,
+            "icms_origem_calc": icms_origem_calc,
+            "icms_st": icms_st,
+            "saldo_devedor": saldo_devedor,
+            "mult_sefaz": mult_sefaz,
+            "icms_retido": icms_retido,
+
+            # aliases usados nos templates
+            "valor_operacao": valor_oper,
+            "mva_percentual": mva_percent,
+            "multiplicador": mult_sefaz,
+            "quant": qCom, "vun": vUnCom, "vprod": vProd, "frete": vFrete, "ipi": vIPI, "vout": vOutro,
+            "icms_deson": vICMSDeson,
+            "base_calculo_st": base_st,
+            "aliquota_icms_st": aliq_st,
+            "valor_icms_st": icms_st,
+            "valor_saldo_devedor": saldo_devedor,
+            "multiplicador_sefaz": mult_sefaz,
+            "valor_icms_retido": icms_retido,
+        })
+        total_st += float(r.icms_st_devido or 0.0)
+
+    return {"uf_origem": uf_origem, "uf_destino": uf_destino, "linhas": linhas, "total_st": total_st}
+# ——————————————————————————————————————————————————————————————
+
 
 def _is_nfe_xml(xml_bytes: bytes) -> tuple[bool, str]:
     """
@@ -27,14 +114,12 @@ def _is_nfe_xml(xml_bytes: bytes) -> tuple[bool, str]:
     - Presença de <infNFe Id="..."> e de campos da seção <ide> (nNF/serie/UF etc.)
     """
     try:
-        # tenta detectar encoding a partir do prólogo
         txt = xml_bytes.decode("utf-8", errors="ignore")
         root = ET.fromstring(txt)
     except Exception:
         return False, "Arquivo não é um XML válido."
 
     tag = root.tag.lower()
-    # namespaces virão no tag como {ns}nfeproc – normalize checando término
     if tag.endswith("nfe"):
         nfe = root
     elif tag.endswith("nfeproc"):
@@ -48,7 +133,6 @@ def _is_nfe_xml(xml_bytes: bytes) -> tuple[bool, str]:
     else:
         return False, "XML não parece ser de NF-e (root != NFe/nfeProc)."
 
-    # procurar infNFe
     inf = None
     for child in nfe:
         if child.tag.lower().endswith("infnfe"):
@@ -57,7 +141,6 @@ def _is_nfe_xml(xml_bytes: bytes) -> tuple[bool, str]:
     if inf is None:
         return False, "NF-e sem nó infNFe."
 
-    # checar alguns campos de ide
     ide = None
     for child in inf:
         if child.tag.lower().endswith("ide"):
@@ -66,7 +149,6 @@ def _is_nfe_xml(xml_bytes: bytes) -> tuple[bool, str]:
     if ide is None:
         return False, "NF-e sem seção <ide>."
 
-    # pelo menos um destes deve existir
     campos_ok = {"cuf","nnf","serie","mod","cmunfg"}
     encontrados = set()
     for c in ide:
@@ -81,13 +163,11 @@ def _get_quota(user_id:int) -> UserQuota:
     if not q:
         q = UserQuota(user_id=user_id)
         db.session.add(q); db.session.commit()
-    # garante rollover mensal
     from datetime import datetime
     cur = datetime.utcnow().strftime("%Y-%m")
     if q.month_ref != cur:
         q.month_ref = cur
         q.month_uploads = 0
-        # se desejar, zere também storage mensal (se adicionar esse campo)
         db.session.add(q); db.session.commit()
     return q
 
@@ -99,7 +179,6 @@ def current_user():
     if not email:
         return None
     return User.query.filter_by(email=email).first()
-
 
 def user_upload_root(user_id:int) -> Path:
     root = Path(current_app.config.get("UPLOAD_FOLDER", "./uploads"))
@@ -120,7 +199,6 @@ def _enforce_plan_limits(user, size_add:int) -> tuple[bool,str]:
         return True, ""
     quota = _get_quota(user.id)
 
-    # limites absolutos
     if plan.max_files and (quota.files_count + 1) > plan.max_files:
         return False, f"Limite de arquivos simultâneos excedido ({quota.files_count}/{plan.max_files})."
 
@@ -128,12 +206,8 @@ def _enforce_plan_limits(user, size_add:int) -> tuple[bool,str]:
         used_mb = round(quota.storage_bytes/1048576,1)
         return False, f"Limite de armazenamento do plano excedido ({used_mb}MB/{plan.max_storage_mb}MB)."
 
-    # limites mensais
     if plan.max_monthly_files and (quota.month_uploads + 1) > plan.max_monthly_files:
         return False, f"Limite mensal de uploads excedido ({quota.month_uploads}/{plan.max_monthly_files})."
-
-    # se quiser controlar MB mensal, crie um campo month_storage_bytes no UserQuota
-    # e valide aqui de forma análoga.
 
     return True, ""
 
@@ -196,7 +270,6 @@ def toggle_incluir(file_id:int):
     flash("Preferência de inclusão nos totais atualizada.", "success")
     return redirect(url_for("files.list_files"))
 
-
 @bp.route("/meus-arquivos", methods=["GET"])
 @login_required
 def list_files():
@@ -243,7 +316,6 @@ def upload_xml():
     user_root = user_upload_root(user.id)
     safe_name = secure_filename(file.filename)
     target = user_root / safe_name
-    # evita sobrescrever: se já existir, adiciona sufixo numérico
     if target.exists():
         stem, ext = os.path.splitext(safe_name)
         i = 2
@@ -260,7 +332,7 @@ def upload_xml():
         fh.write(data)
 
     # 6) Registros no banco (md5, display_name fallback)
-    md5 = _md5(target)  # ou calcule por data: hashlib.md5(data).hexdigest()
+    md5 = _md5(target)
     rec = UserFile(
         user_id=user.id,
         filename=safe_name,
@@ -285,7 +357,6 @@ def upload_xml():
 
     flash("Upload concluído e arquivo validado como NF-e.", "success")
     return redirect(url_for("files.list_files"))
-
 
 @bp.route("/ver-xml/<int:file_id>")
 @login_required
@@ -315,7 +386,7 @@ def preview_xml(file_id:int):
     totais = parser.totais() or {}
     itens = parser.itens() or []
 
-    xml_b64 = b64encode(xml_bytes).decode("ascii")  # <<--- ESSENCIAL!
+    xml_b64 = b64encode(xml_bytes).decode("ascii")
 
     return render_template(
         "preview.html",
@@ -323,33 +394,27 @@ def preview_xml(file_id:int):
         head=head,
         totais=totais,
         itens=itens,
-        xml=xml_str,          # opcional (aba “Fonte”)
-        xml_b64=xml_b64       # <<--- ENVIE ISTO PARA O FORM “Calcular ST”
+        xml=xml_str,
+        xml_b64=xml_b64
     )
-
 
 @bp.route("/deletar-xml/<int:file_id>", methods=["POST"])
 @login_required
 def deletar_xml(file_id:int):
     uf = UserFile.query.filter_by(id=file_id, user_id=current_user().id, deleted_at=None).first_or_404()
 
-    # apaga resumo (se existir)
-    from oraculoicms_app.models.file import NFESummary
     s = NFESummary.query.filter_by(user_file_id=uf.id).first()
     if s:
         db.session.delete(s)
 
-    # (opcional) remover arquivo do disco:
     try:
         Path(uf.storage_path).unlink(missing_ok=True)
     except Exception:
         pass
 
-    # marca o arquivo como deletado
     uf.deleted_at = datetime.datetime.utcnow()
     db.session.add(uf)
 
-    # quota (se estiver usando UserQuota)
     try:
         quota = _get_quota(current_user().id)
         size = uf.size_bytes or 0
@@ -359,13 +424,11 @@ def deletar_xml(file_id:int):
     except Exception:
         pass
 
-    # auditoria
     db.session.add(AuditLog(user_id=current_user().id, action="delete", ref=f"user_file:{uf.id}", description=uf.filename))
 
     db.session.commit()
     flash("Arquivo e resumo removidos.", "info")
     return redirect(url_for("files.list_files"))
-
 
 @bp.route("/parse-xml/<int:file_id>", methods=["POST"])
 @login_required
@@ -393,7 +456,7 @@ def parse_xml(file_id: int):
             flash(f"NF-e {chave} já foi processada (arquivo #{dup.user_file_id}).", "info")
             return redirect(url_for("files.list_files"))
 
-    # --------- ÚNICO caminho: UPSERT ---------
+    # UPSERT do resumo
     try:
         summary, created = upsert_summary_from_xml(
             db, NFEXML, NFESummary, UserFile,
@@ -405,12 +468,20 @@ def parse_xml(file_id: int):
         flash(f"Falha ao processar XML: {e}", "danger")
         return redirect(url_for("files.list_files"))
 
-    # Enriquecer com meta e carimbar processed_at (se ainda não houver)
+    # ——— CALCULAR ST e cachear ———
+    try:
+        payload = _compute_st_payload(xml_bytes, NFEXML, get_motor)
+        summary.calc_json    = json.dumps(payload, ensure_ascii=False)
+        summary.calc_version = ALG_VERSION
+        summary.calc_at      = datetime.datetime.utcnow()
+        if not summary.processed_at:
+            summary.processed_at = datetime.datetime.utcnow()
+    except Exception as e:
+        current_app.logger.warning("Falha ao calcular ST no parse_xml: %s", e)
+
+    # meta e persist
     meta = {"header": head, "totais": tot}
     summary.meta_json = json.dumps(meta, ensure_ascii=False)
-    if not summary.processed_at:
-        import datetime
-        summary.processed_at = datetime.datetime.utcnow()
 
     db.session.add(summary)
     db.session.commit()
@@ -425,9 +496,14 @@ def parse_xml(file_id: int):
     )
     db.session.commit()
 
-    flash("XML processado e resumo salvo.", "success")
+    flash("XML processado e cálculo ICMS-ST salvo.", "success")
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.args.get("ajax") == "1":
+        return jsonify({
+            "ok": True,
+            "file_id": uf.id,
+            "calc_url": url_for("files.ver_calculo", file_id=uf.id)
+        })
     return redirect(url_for("files.list_files"))
-
 
 @bp.route("/relatorios/nfe")
 @login_required
@@ -447,7 +523,7 @@ def relatorio_nfe():
     # filtros extras
     f_status = request.args.get("status")            # 'conforme' | 'nao_conforme' | 'pending' | ''(todos)
     f_proc = request.args.get("proc")                # 'processed' | 'unprocessed' | ''(todos)
-    f_totais = request.args.get("in_totals")         # '1' (somente incluídas) | '0' (somente excluídas) | ''(todas)
+    f_totais = request.args.get("in_totals")         # '1' | '0' | ''(todas)
 
     q = (db.session.query(NFESummary)
          .join(UserFile, NFESummary.user_file_id==UserFile.id)
@@ -460,9 +536,7 @@ def relatorio_nfe():
     if f_proc == "processed":
         q = q.filter(NFESummary.processed_at.isnot(None))
     elif f_proc == "unprocessed":
-        # não tem summary → mas estamos partindo de NFESummary; então unprocessed não aparece aqui.
-        # Se quiser listar não processadas, terá que LEFT JOIN em UserFile. Mantemos só processadas neste relatório.
-        pass
+        pass  # relatório lista summaries; se quiser listar não processadas, precisaria LEFT JOIN partindo de UserFile
 
     if f_totais == "1":
         q = q.filter(NFESummary.include_in_totals.is_(True))
@@ -479,7 +553,6 @@ def relatorio_nfe():
         seen.add(r.chave)
         uniq.append(r)
 
-    # somatórios: considerar SOMENTE as NFs marcadas para entrar nos totais
     base_totais = [r for r in uniq if r.include_in_totals]
     tot_notas = len(uniq)
     soma_total = sum(float(r.valor_total or 0) for r in base_totais)
@@ -498,7 +571,6 @@ def relatorio_nfe():
 @bp.route("/relatorios/nfe/selecionar", methods=["POST"])
 @login_required
 def selecionar_totais():
-    # filtros para manter o contexto ao voltar
     start = request.form.get("start"); end = request.form.get("end")
     status = request.form.get("status",""); in_totals = request.form.get("in_totals","")
 

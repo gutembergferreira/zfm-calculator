@@ -34,22 +34,25 @@
                     </tr></thead>
                     <tbody>
                     {% for f in files %}
-                    <tr>
+                    <tr id="row-{{ f.id }}" data-file-id="{{ f.id }}"> {# NEW: ids para JS #}
                         <td>{{ f.display_name or f.filename }}</td>
                         <td>{{ (f.size_bytes/1048576)|round(2) }} MB</td>
                         <td>
-                            {% if f.nfe_summary %}
-                            <span class="badge bg-primary" data-bs-toggle="tooltip" title="Arquivo já foi processado e tem resumo salvo.">Processado</span>
-                            {% set val = f.nfe_summary.validation_status or 'pending' %}
+                            {# NEW: badge com id para atualização #}
+                            {% set is_proc = (f.nfe_summary and (f.nfe_summary.processed_at or f.nfe_summary.calc_json)) %}
+                            <span id="badge-proc-{{ f.id }}"
+                                  class="badge {{ 'bg-primary' if is_proc else 'bg-secondary' }}"
+                                  data-bs-toggle="tooltip"
+                                  title="{{ 'Arquivo já foi processado.' if is_proc else 'Ainda não processado.' }}">
+                                {{ 'Processado' if is_proc else 'Não processado' }}
+                            </span>
+                            {% set val = f.nfe_summary and f.nfe_summary.validation_status or 'pending' %}
                             {% if val == 'conforme' %}
                             <span class="badge bg-success" data-bs-toggle="tooltip" title="Você marcou que os cálculos conferem.">Conforme</span>
                             {% elif val == 'nao_conforme' %}
                             <span class="badge bg-danger" data-bs-toggle="tooltip" title="Você marcou que há divergência nos cálculos.">Não conforme</span>
                             {% else %}
                             <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Ainda não validado por você.">Pendente</span>
-                            {% endif %}
-                            {% else %}
-                            <span class="badge bg-secondary" data-bs-toggle="tooltip" title="Ainda não processado.">Não processado</span>
                             {% endif %}
                             <a href="#" class="ms-1 text-muted" data-bs-toggle="modal" data-bs-target="#statusHelp">
                                 <i class="bi bi-info-circle"></i>
@@ -63,8 +66,11 @@
                                 <ul class="dropdown-menu dropdown-menu-end">
                                     {% if not f.nfe_summary %}
                                     <li>
-                                        <form method="post" action="{{ url_for('files.parse_xml', file_id=f.id) }}">
-                                            <button class="dropdown-item"><i class="bi bi-gear"></i> Processar</button>
+                                        {# NEW: transforma Processar em AJAX + progress (#?ajax=1) #}
+                                        <form class="form-processar" method="post" action="{{ url_for('files.parse_xml', file_id=f.id) }}?ajax=1">
+                                            <button type="button" class="dropdown-item d-flex align-items-center gap-2 btn-processar" data-file-id="{{ f.id }}">
+                                                <i class="bi bi-gear"></i> Processar
+                                            </button>
                                         </form>
                                     </li>
                                     {% else %}
@@ -101,19 +107,18 @@
                                href="{{ url_for('files.preview_xml', file_id=f.id) }}">
                                 <i class="bi bi-search"></i><span>Ver_NFe</span>
                             </a>
-                            {# Visualizar cálculo (habilita só se processado) #}
-                            {% set pode_calculo = f.nfe_summary and f.nfe_summary.processed_at %}
+                            {# NEW: habilita Ver_Cálculo se já houver cache (calc_json) #}
+                            {% set pode_calculo = f.nfe_summary and f.nfe_summary.calc_json %}
                             {% if pode_calculo %}
-                            <a class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
+                            <a id="btnCalc-{{ f.id }}" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
                                href="{{ url_for('files.ver_calculo', file_id=f.id) }}">
                                 <i class="bi bi-clipboard-data"></i><span>Ver_Cálculo</span>
                             </a>
                             {% else %}
-                            <a class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1 disabled"
-                               href="#"
-                               tabindex="-1" aria-disabled="true"
+                            <a id="btnCalc-{{ f.id }}" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1 disabled"
+                               href="#" tabindex="-1" aria-disabled="true"
                                data-bs-toggle="tooltip" title="Disponível após Processar o XML">
-                                <i class="bi bi-clipboard-data"></i><span>Ver_cálculo</span>
+                                <i class="bi bi-clipboard-data"></i><span>Ver_Cálculo</span>
                             </a>
                             {% endif %}
                         </td>
@@ -146,4 +151,99 @@
     </div></div>
 </div>
 
+{# NEW: Modal do progress bar #}
+<div class="modal fade" id="procModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-gear-wide-connected me-2"></i>Processando XML</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="progress" style="height:22px">
+          <div id="procBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:10%">10%</div>
+        </div>
+        <p class="mt-3 mb-0 text-muted small" id="procHint">Iniciando…</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block body_extra %}
+<script>
+(function(){
+  // tooltips globais
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+
+  // NEW: modal de progresso
+  const modal = new bootstrap.Modal(document.getElementById('procModal'));
+  const bar   = document.getElementById('procBar');
+  const hint  = document.getElementById('procHint');
+
+  function setBar(p, t){
+    p = Math.max(5, Math.min(100, p|0));
+    bar.style.width = p + '%';
+    bar.textContent = p + '%';
+    if (t) hint.textContent = t;
+  }
+
+  // NEW: botão "Processar" via AJAX com progress
+  document.querySelectorAll('.btn-processar').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const form = btn.closest('form.form-processar');
+      const fileId = btn.getAttribute('data-file-id');
+      if (!form) return;
+
+      // abre modal + animação fake até ~90%
+      modal.show();
+      let p = 10;
+      const timer = setInterval(()=>{ if (p < 90) { p += Math.random()*7; setBar(p, 'Lendo e calculando…'); } }, 250);
+
+      try {
+        const resp = await fetch(form.action, {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        const data = await resp.json();
+
+        clearInterval(timer);
+        setBar(100, 'Finalizando…');
+
+        if (data && data.ok) {
+          // habilita Ver_Cálculo
+          const aCalc = document.getElementById('btnCalc-' + fileId);
+          if (aCalc) {
+            aCalc.classList.remove('disabled');
+            aCalc.removeAttribute('aria-disabled');
+            aCalc.removeAttribute('tabindex');
+            aCalc.removeAttribute('data-bs-toggle');
+            aCalc.removeAttribute('title');
+            if (data.calc_url) aCalc.setAttribute('href', data.calc_url);
+          }
+          // atualiza badge Processado
+          const bProc = document.getElementById('badge-proc-' + fileId);
+          if (bProc) {
+            bProc.classList.remove('bg-secondary');
+            bProc.classList.add('bg-primary');
+            bProc.textContent = 'Processado';
+            bProc.setAttribute('title', 'Arquivo já foi processado.');
+          }
+        } else {
+          // fallback em caso de HTML/redirect inesperado
+          window.location.reload();
+        }
+
+        setTimeout(()=> modal.hide(), 400);
+      } catch (e) {
+        clearInterval(timer);
+        setBar(100, 'Falhou.');
+        hint.textContent = 'Ocorreu um erro durante o processamento.';
+        console.error(e);
+        setTimeout(()=> modal.hide(), 1200);
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}
