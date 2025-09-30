@@ -104,3 +104,11 @@ flask init-db
 ```
 
 > Garanta que `User` tenha relacionamento `plan` (ex.: `user.plan_id -> Plan.id`). Se não houver, inclua a coluna `plan_id` em `users` e ajuste conforme seu fluxo de assinatura.
+
+
+Rodar Testes Unitários:
+```
+pytest --cov=oraculoicms_app --cov=xml_parser --cov-report=term-missing --cov-report=html
+```
+
+

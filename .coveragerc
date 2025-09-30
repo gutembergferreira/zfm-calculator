@@ -1,0 +1,26 @@
+[run]
+branch = True
+source =
+    oraculoicms_app
+    xml_parser
+omit =
+    */migrations/*
+    */wsgi.py
+    */__init__.py:if __init__ only does imports
+    */templates/*
+    */static/*
+    */tests/*
+    */venv/*
+    */.venv/*
+    */site-packages/*
+
+[report]
+show_missing = True
+skip_covered = False
+precision = 1
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+
+[html]
+directory = htmlcov
