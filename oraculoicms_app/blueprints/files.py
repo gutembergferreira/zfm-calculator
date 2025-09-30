@@ -216,6 +216,32 @@ def _get_summary_owned(file_id:int):
     s = NFESummary.query.filter_by(user_file_id=uf.id).first_or_404()
     return uf, s
 
+def _get_user_plan(user):
+    # seu User guarda slug em user.plan (string). Busque o Plan por slug:
+    return Plan.query.filter_by(slug=user.plan, active=True).first()
+
+def _can_upload(user, new_bytes: int) -> tuple[bool, str]:
+    plan = _get_user_plan(user)
+    if not plan:
+        return False, "Plano não encontrado ou inativo."
+
+    q = UserQuota.query.filter_by(user_id=user.id).first()
+    if not q:
+        return False, "Cota do usuário não inicializada."
+
+    # Limites
+    if plan.max_files and q.files_count >= plan.max_files:
+        return False, f"Limite de arquivos do plano atingido ({plan.max_files})."
+
+    if plan.max_storage_mb and (q.storage_bytes + new_bytes) > (plan.max_storage_mb * 1024 * 1024):
+        return False, f"Limite de armazenamento ({plan.max_storage_mb} MB) atingido."
+
+    if plan.max_uploads_month and q.month_uploads >= plan.max_uploads_month:
+        return False, f"Limite de uploads mensais atingido ({plan.max_uploads_month})."
+
+    return True, ""
+
+
 @bp.route("/ver-calculo/<int:file_id>")
 @login_required
 def ver_calculo(file_id:int):

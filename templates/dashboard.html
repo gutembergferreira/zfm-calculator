@@ -1,42 +1,91 @@
 {% extends 'base.html' %}
-{% block title %}Dashboard — ZFM Calculator{% endblock %}
+{% block title %}Dashboard — Oraculo ICMS{% endblock %}
 {% block page_title %}<i class="bi bi-speedometer2 me-1"></i>Dashboard{% endblock %}
 {% block head_extra %}
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 {% endblock %}
+
 {% block content %}
-<div class="row g-3">
-  <div class="col-6 col-lg-3"><div class="stat"><div class="label">Usuários</div><div class="value">{{ stats.users }}</div></div></div>
-  <div class="col-6 col-lg-3"><div class="stat"><div class="label">NF-e processadas (mês)</div><div class="value">{{ stats.nfes_month }}</div></div></div>
-  <div class="col-6 col-lg-3"><div class="stat"><div class="label">MRR (R$/mês)</div><div class="value">{{ '%.2f'|format(stats.mrr) }}</div></div></div>
-  <div class="col-6 col-lg-3"><div class="stat"><div class="label">Armazenamento</div><div class="value">{{ stats.storage }}</div></div></div>
-</div>
+{% if is_admin %}
+  {# =================== DASHBOARD ADMIN =================== #}
+  <div class="row g-3">
+    <div class="col-6 col-lg-3"><div class="stat"><div class="label">Usuários</div><div class="value">{{ stats.users }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat"><div class="label">Assinaturas ativas</div><div class="value">{{ stats.active_subs }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat"><div class="label">MRR (R$/mês)</div><div class="value">{{ '%.2f'|format(stats.mrr) }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat"><div class="label">ARR (R$/ano)</div><div class="value">{{ '%.2f'|format(stats.arr) }}</div></div></div>
+  </div>
 
-<div class="row g-3 mt-1">
-  <div class="col-lg-8">
-    <div class="card h-100 shadow-sm">
-      <div class="card-body">
-        <h6 class="mb-3">NF-e processadas — últimos 7 dias</h6>
-        <canvas id="chartNfe" height="110"></canvas>
+  <div class="row g-3 mt-1">
+    <div class="col-6 col-lg-3"><div class="stat"><div class="label">Receita últimos 30d</div><div class="value">R$ {{ '%.2f'|format(stats.revenue_30d) }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat"><div class="label">Receita últimos 365d</div><div class="value">R$ {{ '%.2f'|format(stats.revenue_365d) }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat"><div class="label">NF-e processadas (mês)</div><div class="value">{{ stats.nfes_month }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat"><div class="label">Armazenamento</div><div class="value">{{ stats.storage }}</div></div></div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-lg-8">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">NF-e processadas — últimos 7 dias</h6>
+            <div class="small text-muted">Uptime: {{ stats.uptime_human }}</div>
+          </div>
+          <canvas id="chartNfe" height="110"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <h6 class="mb-3">MRR por plano</h6>
+          <canvas id="chartMRR" height="110"></canvas>
+        </div>
       </div>
     </div>
   </div>
-  <div class="col-lg-4">
-    <div class="card h-100 shadow-sm">
-      <div class="card-body">
-        <h6 class="mb-3">MRR por plano (exemplo)</h6>
-        <canvas id="chartMRR" height="110"></canvas>
+
+{% else %}
+  {# =================== DASHBOARD USUÁRIO =================== #}
+  <div class="row g-3">
+    <div class="col-6 col-lg-3"><div class="stat"><div class="label">Seu plano</div><div class="value">{{ stats.plan_name or '-' }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat"><div class="label">NF-e (mês)</div><div class="value">{{ stats.nfes_month_user }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat"><div class="label">Cota restante</div><div class="value">{{ stats.quota_left }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="stat"><div class="label">Armazenamento</div><div class="value">{{ stats.storage_user }}</div></div></div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-lg-8">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <h6 class="mb-3">Suas NF-e — últimos 7 dias</h6>
+          <canvas id="chartNfe" height="110"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <h6 class="mb-2">Assinatura</h6>
+          <div class="small text-muted">Status: <strong>{{ stats.sub_status or '-' }}</strong></div>
+          <div class="small text-muted">Renova em: <strong>{{ stats.next_renewal or '-' }}</strong></div>
+          {% if stats.trial_days_left is not none %}
+            <div class="small text-muted">Trial restante: <strong>{{ stats.trial_days_left }} dias</strong></div>
+          {% endif %}
+          <hr>
+          <a class="btn btn-sm btn-primary" href="{{ url_for('billing.checkout_choose') }}"><i class="bi bi-credit-card me-1"></i>Gerenciar plano</a>
+        </div>
       </div>
     </div>
   </div>
-</div>
-
+{% endif %}
 {% endblock %}
+
 {% block body_extra %}
 <script>
-  // Dados vindos do backend (simples)
+  // Dados vindos do backend
   const lastWeek = {{ stats.last_week|tojson }};
-  const mrrByPlan = {{ stats.mrr_by_plan|tojson if stats.mrr_by_plan is defined else {'Basic':5000,'Pro':9000,'Ent':349.9}|tojson }};
+  const mrrByPlan = {{ stats.mrr_by_plan|tojson if stats.mrr_by_plan is defined else {}|tojson }};
+
   // Linha — NF-e / dia
   new Chart(document.getElementById('chartNfe'), {
     type: 'line',
@@ -50,17 +99,16 @@
       scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } }
     }
   });
-  // Barras — MRR por plano
-  const labels = Object.keys(mrrByPlan);
-  const values = Object.values(mrrByPlan);
-  new Chart(document.getElementById('chartMRR'), {
-    type: 'bar',
-    data: { labels, datasets:[{ label:'R$/mês', data: values }]},
-    options: {
-      responsive:true,
-      plugins:{ legend:{ display:false } },
-      scales:{ y:{ beginAtZero:true } }
-    }
-  });
+
+  // Barras — MRR por plano (apenas admin; se vazio, gráfico fica em branco)
+  if (Object.keys(mrrByPlan).length) {
+    const labels = Object.keys(mrrByPlan);
+    const values = Object.values(mrrByPlan);
+    new Chart(document.getElementById('chartMRR'), {
+      type: 'bar',
+      data: { labels, datasets:[{ label:'R$/mês', data: values }]},
+      options: { responsive:true, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true } } }
+    });
+  }
 </script>
 {% endblock %}

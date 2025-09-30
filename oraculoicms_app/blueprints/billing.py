@@ -1,12 +1,15 @@
+# oraculoicms_app/blueprints/billing.py
+from __future__ import annotations
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, current_app, redirect, url_for, render_template, flash
 import stripe
-import datetime as dt
 
-from .files import current_user
 from ..decorators import login_required
 from ..extensions import db
-from ..models import UserQuota
+from ..models.user import User
 from ..models.plan import Plan, Subscription
+from ..models.user_quota import UserQuota
+from .files import current_user  # helper que lê session['user']
 
 bp = Blueprint("billing", __name__, url_prefix="/billing")
 
@@ -14,64 +17,77 @@ def _stripe():
     stripe.api_key = current_app.config["STRIPE_SECRET_KEY"]
     return stripe
 
-def _get_or_create_sub(user):
+def _now():
+    return datetime.now(timezone.utc)
+
+def _get_or_create_sub(user: User) -> Subscription:
     sub = Subscription.query.filter_by(user_id=user.id).first()
     if not sub:
-        sub = Subscription(user_id=user.id)
-        db.session.add(sub); db.session.commit()
+        # cria placeholder
+        plan = Plan.query.filter_by(active=True).first()
+        sub = Subscription(user_id=user.id, plan_id=plan.id if plan else None, provider="stripe")
+        db.session.add(sub)
+        db.session.commit()
     return sub
+
+@bp.route("/checkout", methods=["GET", "POST"])
+@login_required
+def checkout_choose():
+    """Página para o usuário escolher plano e ciclo antes de ir ao Stripe."""
+    plans = Plan.query.filter_by(active=True).all()
+    if request.method == "POST":
+        plan_id = int(request.form.get("plan_id"))
+        cycle = request.form.get("cycle", "monthly")
+        plan = Plan.query.get_or_404(plan_id)
+        return redirect(url_for("billing.checkout", plan_slug=plan.slug, cycle=("monthly" if cycle=='monthly' else 'yearly')))
+    return render_template("checkout.html", plans=plans)
 
 @bp.route("/checkout/<plan_slug>/<cycle>")
 @login_required
-def checkout(plan_slug, cycle):
-    """
-    cycle: 'monthly' ou 'yearly'
-    """
+def checkout(plan_slug: str, cycle: str):
+    """Cria a Stripe Checkout Session (modo assinatura)."""
+    cycle = "monthly" if cycle not in ("monthly", "yearly") else cycle
     plan = Plan.query.filter_by(slug=plan_slug, active=True).first_or_404()
     price_id = plan.stripe_price_monthly_id if cycle == "monthly" else plan.stripe_price_yearly_id
     if not price_id:
-        flash("Plano sem preço Stripe configurado.", "warning")
-        return redirect(url_for("core.index"))
+        flash("Plano sem price_id do Stripe configurado.", "warning")
+        return redirect(url_for("billing.checkout_choose"))
 
-    stripe_ = _stripe()
+    s = _stripe()
     user = current_user() if callable(current_user) else current_user
-
-    # Cria/recupera um Customer
+    # cria/recupera Customer
     sub = _get_or_create_sub(user)
-    if not sub.stripe_customer_id:
-        customer = stripe_.Customer.create(email=user.email or None, name=user.name or None)
-        sub.stripe_customer_id = customer.id
+    if not sub.provider_cust_id:
+        cust = s.Customer.create(email=user.email, name=user.name, metadata={"user_id": user.id})
+        sub.provider_cust_id = cust.id
         db.session.add(sub); db.session.commit()
 
-    # Trial controlado no Stripe via price trial ou via subscription_data
-    trial_days = plan.trial_days or 0
+    # trial (opcional, conforme plan.trial_days)
     params = {
         "mode": "subscription",
-        "customer": sub.stripe_customer_id,
+        "customer": sub.provider_cust_id,
         "line_items": [{"price": price_id, "quantity": 1}],
         "success_url": current_app.config["STRIPE_SUCCESS_URL"],
         "cancel_url": current_app.config["STRIPE_CANCEL_URL"],
         "allow_promotion_codes": True,
     }
-    if trial_days > 0:
-        params["subscription_data"] = {"trial_period_days": trial_days}
+    if plan.trial_days and plan.trial_days > 0:
+        params["subscription_data"] = {"trial_period_days": int(plan.trial_days)}
 
-    sess = stripe_.Checkout.Session.create(**params)
+    sess = s.checkout.Session.create(**params)
     return redirect(sess.url, code=303)
 
 @bp.route("/portal")
 @login_required
 def portal():
-    stripe_ = _stripe()
-    user = current_user
+    """Redireciona para o Billing Portal da Stripe para gerenciar a assinatura."""
+    s = _stripe()
+    user = current_user() if callable(current_user) else current_user
     sub = _get_or_create_sub(user)
-    if not sub.stripe_customer_id:
-        flash("Nenhuma assinatura encontrada para acessar o Portal.", "warning")
-        return redirect(url_for("core.index"))
-    portal = stripe_.billing_portal.Session.create(
-        customer=sub.stripe_customer_id,
-        return_url=url_for("core.index", _external=True),
-    )
+    if not sub.provider_cust_id:
+        flash("Cliente não encontrado no Stripe.", "warning")
+        return redirect(url_for("billing.checkout_choose"))
+    portal = s.billing_portal.Session.create(customer=sub.provider_cust_id, return_url=url_for("core.dashboard", _external=True))
     return redirect(portal.url, code=303)
 
 @bp.route("/sucesso")
@@ -86,84 +102,88 @@ def cancelado():
     flash("Fluxo de checkout cancelado.", "warning")
     return render_template("billing_cancel.html")
 
-# ——— WEBHOOK ———
-@bp.route("/webhook", methods=["POST"])
+# -------- Stripe Webhook --------
+def _on_subscription_change(customer_id: str, subscription_id: str):
+    s = _stripe()
+    # lê subscription do Stripe
+    subs = s.Subscription.retrieve(subscription_id)
+    price = subs["items"]["data"][0]["price"]
+    # plan resolve pelo price.id salvo
+    plan = Plan.query.filter(
+        (Plan.stripe_price_monthly_id == price["id"]) | (Plan.stripe_price_yearly_id == price["id"])
+    ).first()
+    # encontra sub local
+    sub = Subscription.query.filter_by(provider_cust_id=customer_id).first()
+    if not sub:
+        # fallback por customer_id
+        sub = Subscription(provider="stripe")
+        db.session.add(sub)
+
+    # vincula usuário por metadata do customer se ainda não existir
+    cust = s.Customer.retrieve(customer_id)
+    user = User.query.filter_by(email=cust.get("email")).first()
+
+    if user and plan:
+        sub.user_id = user.id
+        sub.plan_id = plan.id
+        sub.provider = "stripe"
+        sub.provider_sub_id = subscription_id
+        sub.provider_cust_id = customer_id
+        sub.status = subs.get("status") or "active"
+        sub.billing_cycle = "year" if price.get("recurring",{}).get("interval") == "year" else "month"
+        sub.amount_cents = int(price.get("unit_amount") or 0)
+        # períodos
+        if subs.get("current_period_start"):
+            sub.period_start = datetime.fromtimestamp(subs["current_period_start"], tz=timezone.utc)
+        if subs.get("current_period_end"):
+            sub.period_end = datetime.fromtimestamp(subs["current_period_end"], tz=timezone.utc)
+        if subs.get("trial_end"):
+            sub.trial_end = datetime.fromtimestamp(subs["trial_end"], tz=timezone.utc)
+
+        # Atualiza o 'plano' textual no usuário (compatibilidade com seu schema atual)
+        user.plan = plan.slug
+        db.session.add(user)
+
+        # opcional: reset de cotas ao iniciar ciclo
+        _ensure_quota_reset(user.id)
+
+    db.session.add(sub)
+    db.session.commit()
+
+def _ensure_quota_reset(user_id: int):
+    q = UserQuota.query.filter_by(user_id=user_id).first()
+    if not q:
+        return
+    # zera contadores do mês
+    q.month_uploads = 0
+    q.month_ref = datetime.utcnow().strftime("%Y-%m")
+    db.session.add(q)
+
+@bp.route("/webhook", methods=["POST"])  # configure endpoint no Dashboard da Stripe
 def stripe_webhook():
-    stripe_ = _stripe()
+    s = _stripe()
     payload = request.data
     sig = request.headers.get("Stripe-Signature", "")
     secret = current_app.config["STRIPE_WEBHOOK_SECRET"]
     try:
-        event = stripe_.Webhook.construct_event(payload, sig, secret)
-    except Exception as e:
+        event = s.Webhook.construct_event(payload, sig, secret)
+    except Exception:
         current_app.logger.exception("Webhook signature error")
         return "bad signature", 400
 
     typ = event["type"]
     data = event["data"]["object"]
-
-    # checkout.session.completed -> cria/atualiza subscription local
     if typ == "checkout.session.completed":
-        customer_id = data.get("customer")
-        subscription_id = data.get("subscription")
-        _on_subscription_change(customer_id, subscription_id)
-
-    # customer.subscription.updated / created
-    if typ in ("customer.subscription.updated", "customer.subscription.created"):
-        subscription_id = data.get("id")
-        customer_id = data.get("customer")
-        _on_subscription_change(customer_id, subscription_id, data)
-
-    # invoice.paid / invoice.payment_failed => opcional log
-    return "ok", 200
-
-def _on_subscription_change(customer_id, subscription_id, stripe_sub_obj=None):
-    from ..models.user import User
-    stripe_ = _stripe()
-    if not stripe_sub_obj:
-        stripe_sub_obj = stripe_.Subscription.retrieve(subscription_id, expand=["items.data.price.product"])
-
-    # encontra o user pela subscription.customer
-    sub = Subscription.query.filter_by(stripe_customer_id=customer_id).first()
-    if not sub:
-        # fallback: achar por subscription id
-        sub = Subscription.query.filter_by(stripe_subscription_id=subscription_id).first()
-    if not sub:
-        current_app.logger.warning("Subscription local não encontrada: %s", subscription_id)
-        return
-
-    sub.stripe_subscription_id = subscription_id
-    sub.status = stripe_sub_obj.get("status")
-    cpe = stripe_sub_obj.get("current_period_end")
-    sub.current_period_end = dt.datetime.utcfromtimestamp(cpe) if cpe else None
-    sub.cancel_at_period_end = bool(stripe_sub_obj.get("cancel_at_period_end"))
-
-    # identifica o plano pelo price
-    items = stripe_sub_obj.get("items", {}).get("data", [])
-    price_id = items[0]["price"]["id"] if items else None
-    plan = Plan.query.filter(
-        (Plan.stripe_price_monthly_id == price_id) | (Plan.stripe_price_yearly_id == price_id)
-    ).first()
-
-    if plan:
-        sub.plan_id = plan.id
-        # aplica plano ao usuário
-        user = User.query.get(sub.user_id)
-        if user:
-            user.plan_id = plan.id
-            db.session.add(user)
-
-            # opcional: reset de quota mensal se começou trial ou período
-            _ensure_quota_reset(user.id, plan)
-
-    db.session.add(sub)
-    db.session.commit()
-
-def _ensure_quota_reset(user_id:int, plan:Plan):
-    # Resetar contadores mensais quando troca de plano (opcional)
-    q = UserQuota.query.filter_by(user_id=user_id).first()
-    if not q:
-        return
-    q.month_uploads = 0
-    q.month_ref = dt.datetime.utcnow().strftime("%Y-%m")
-    db.session.add(q)
+        _on_subscription_change(data.get("customer"), data.get("subscription"))
+    elif typ in ("customer.subscription.updated", "customer.subscription.created"):
+        _on_subscription_change(data.get("customer"), data.get("id"))
+    elif typ == "invoice.paid":
+        # ok renovar
+        pass
+    elif typ == "invoice.payment_failed" or typ == "customer.subscription.deleted":
+        # marcar como inadimplente/cancelado
+        sub = Subscription.query.filter_by(provider_cust_id=data.get("customer")).first()
+        if sub:
+            sub.status = "past_due" if typ == "invoice.payment_failed" else "canceled"
+            db.session.add(sub); db.session.commit()
+    return jsonify(received=True)

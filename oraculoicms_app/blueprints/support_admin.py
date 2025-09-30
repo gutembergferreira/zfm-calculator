@@ -239,3 +239,17 @@ def fb_set_status(id):
     db.session.add(f); db.session.commit()
     flash("Atualizado.", "success")
     return redirect(url_for("support_admin.fb_list"))
+
+@bp.route("/feedbacks/<int:id>/toggle-feature", methods=["POST"])
+@admin_required
+def fb_toggle_feature(id):
+    m = FeedbackMessage.query.get_or_404(id)
+    # se você só quer permitir destaque para category == 'comentario', descomente:
+    # if m.category != 'comentario':
+    #     flash("Apenas mensagens do tipo 'comentario' podem ser destacadas.", "warning")
+    #     return redirect(url_for('support_admin.fb_list'))
+
+    m.is_featured = not bool(m.is_featured)
+    db.session.commit()
+    flash("Destaque atualizado.", "success")
+    return redirect(url_for("support_admin.fb_list"))

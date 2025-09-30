@@ -1,8 +1,11 @@
 {% extends 'base.html' %}
-{% block title %}Minha conta — ZFM Calculator{% endblock %}
+{% block title %}Minha conta — Oraculo ICMS{% endblock %}
 {% block page_title %}<i class="bi bi-person-gear me-1"></i>Minha conta{% endblock %}
+
 {% block content %}
 <div class="row g-3">
+
+  <!-- Perfil -->
   <div class="col-lg-6">
     <div class="card shadow-sm h-100">
       <div class="card-body">
@@ -10,48 +13,128 @@
         <form method="post" action="{{ url_for('auth.account_update') }}">
           <div class="mb-3">
             <label class="form-label">Nome</label>
-            <input class="form-control" name="name" value="{{ user.name }}">
+            <input class="form-control" name="name" value="{{ user.name }}" required>
           </div>
           <div class="mb-3">
             <label class="form-label">E-mail</label>
-            <input class="form-control" name="email" value="{{ user.email }}">
+            <input class="form-control" type="email" name="email" value="{{ user.email }}" required>
           </div>
           <div class="mb-3">
             <label class="form-label">Empresa</label>
             <input class="form-control" name="company" value="{{ user.company or '' }}">
           </div>
-          <button class="btn btn-primary">Salvar</button>
+          <button class="btn btn-primary"><i class="bi bi-save me-1"></i>Salvar</button>
         </form>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-lg-6">
-    <div class="card shadow-sm mb-3">
-      <div class="card-body">
-        <h6 class="mb-3">Trocar senha</h6>
+        <hr>
+        <h6 class="mb-2">Segurança</h6>
         <form method="post" action="{{ url_for('auth.password_change') }}">
           <div class="row g-2">
             <div class="col-md-6"><input class="form-control" type="password" name="pwd1" placeholder="Nova senha" required></div>
             <div class="col-md-6"><input class="form-control" type="password" name="pwd2" placeholder="Confirmar senha" required></div>
           </div>
-          <button class="btn btn-outline-primary mt-2">Atualizar senha</button>
+          <button class="btn btn-outline-primary mt-2"><i class="bi bi-shield-lock me-1"></i>Atualizar senha</button>
+        </form>
+        <hr>
+        <h6 class="mb-2 text-danger">Dados</h6>
+        <form method="post" action="{{ url_for('core.purge_my_xmls') }}" onsubmit="return confirm('Confirmar? Esta ação apaga TODOS os seus XMLs e não pode ser desfeita.')">
+          <button class="btn btn-outline-danger"><i class="bi bi-trash3 me-1"></i>Esvaziar todos os meus XMLs</button>
         </form>
       </div>
     </div>
+  </div>
 
-    <div class="card shadow-sm">
+  <!-- Plano / Assinatura -->
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
       <div class="card-body">
-        <h6 class="mb-3">Plano atual</h6>
-        <div class="d-flex justify-content-between align-items-center">
-          <div>
-            <div>Plano: <strong>{{ user.plan|upper }}</strong></div>
-            <div class="text-muted small">Renovação: {{ user.renews_at }}</div>
+        <h6 class="mb-3">Seu plano</h6>
+
+        {% if acct.plan_name %}
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+              <div class="mb-1">
+                Plano: <strong>{{ acct.plan_name }}</strong>
+                {% if acct.cycle %}<span class="text-muted small">({{ 'mensal' if acct.cycle=='monthly' else 'anual' }})</span>{% endif %}
+              </div>
+              <div class="small text-muted">Status: <strong>{{ acct.sub_status or '—' }}</strong></div>
+              <div class="small text-muted">Próxima renovação: <strong>{{ acct.next_renewal or '—' }}</strong></div>
+              {% if acct.trial_days_left is not none %}
+                <div class="small text-muted">Trial restante: <strong>{{ acct.trial_days_left }} dias</strong></div>
+              {% endif %}
+              {% if acct.price_m or acct.price_y %}
+                <div class="small text-muted mt-1">
+                  {% if acct.price_m %}R$ {{ '%.2f'|format(acct.price_m) }}/mês{% endif %}
+                  {% if acct.price_y %}{% if acct.price_m %} • {% endif %}R$ {{ '%.2f'|format(acct.price_y) }}/ano{% endif %}
+                </div>
+              {% endif %}
+            </div>
+
+            <div class="text-end">
+              <div class="btn-group">
+                <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('billing.checkout_choose') }}">
+                  <i class="bi bi-sliders me-1"></i>Alterar plano
+                </a>
+                {% if acct.portal_url %}
+                  <a class="btn btn-outline-primary btn-sm" href="{{ acct.portal_url }}">
+                    <i class="bi bi-credit-card me-1"></i>Portal de cobrança
+                  </a>
+                {% endif %}
+              </div>
+              {% if acct.sub_id %}
+              <form class="mt-2" method="post" action="{{ url_for('billing.cancel_my_subscription') }}"
+                    onsubmit="return confirm('Tem certeza que deseja cancelar a assinatura?')">
+                <input type="hidden" name="at_period_end" value="on">
+                <button class="btn btn-outline-danger btn-sm">
+                  <i class="bi bi-x-circle me-1"></i>Cancelar ao fim do ciclo
+                </button>
+              </form>
+              {% endif %}
+            </div>
           </div>
-          <a class="btn btn-primary" href="">Alterar plano</a>
-        </div>
+
+          <hr>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="border rounded p-2 h-100">
+                <div class="small text-muted">Uso de NF-e (mês)</div>
+                <div class="fw-bold">{{ acct.nfe_used_month }}/{{ acct.nfe_quota or '—' }}</div>
+                <div class="progress mt-2" style="height:6px;">
+                  {% set pct = 0 %}
+                  {% if acct.nfe_quota %}
+                    {% set pct = (acct.nfe_used_month*100 // acct.nfe_quota) if acct.nfe_quota>0 else 0 %}
+                  {% endif %}
+                  <div class="progress-bar" style="width: {{ pct }}%"></div>
+                </div>
+                <div class="small text-muted mt-1">Cota restante: {{ acct.nfe_left if acct.nfe_left is not none else '—' }}</div>
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <div class="border rounded p-2 h-100">
+                <div class="small text-muted">Armazenamento</div>
+                <div class="fw-bold">{{ acct.storage_used_human }} / {{ acct.storage_cap_human or '—' }}</div>
+                <div class="progress mt-2" style="height:6px;">
+                  {% set spct = acct.storage_pct or 0 %}
+                  <div class="progress-bar" style="width: {{ spct }}%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {% if acct.limits_text %}
+            <div class="mt-3 small text-muted" style="white-space:pre-wrap">{{ acct.limits_text }}</div>
+          {% endif %}
+
+        {% else %}
+          <div class="d-flex justify-content-between align-items-center">
+            <div>Você ainda não possui um plano ativo.</div>
+            <a class="btn btn-primary" href="{{ url_for('billing.checkout_choose') }}"><i class="bi bi-credit-card me-1"></i>Escolher um plano</a>
+          </div>
+        {% endif %}
       </div>
     </div>
   </div>
+
 </div>
 {% endblock %}

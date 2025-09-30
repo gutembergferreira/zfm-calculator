@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Pagamento confirmado{% endblock %}
+{% block page_title %}<i class="bi bi-check-circle me-1"></i>Pagamento iniciado{% endblock %}
+{% block content %}
+<div class="card shadow-sm"><div class="card-body">
+  <p>Recebemos sua solicitação de assinatura. Assim que a Stripe confirmar o pagamento, seu plano será ativado automaticamente.</p>
+  <a class="btn btn-primary" href="{{ url_for('core.dashboard') }}">Ir ao painel</a>
+</div></div>
+{% endblock %}

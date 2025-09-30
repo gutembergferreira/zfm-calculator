@@ -1,11 +1,15 @@
 # zfm_app/blueprints/auth.py
 # -*- coding: utf-8 -*-
 from __future__ import annotations
+
+from datetime import datetime
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 
 from oraculoicms_app import db
+from oraculoicms_app.blueprints.files import current_user
 from oraculoicms_app.decorators import login_required
-from oraculoicms_app.models import User
+from oraculoicms_app.models import User, Subscription, Plan
 
 bp = Blueprint("auth", __name__)
 
@@ -65,11 +69,74 @@ def register():
 
     return render_template("auth_register.html")
 
+def _human_bytes(b):
+    b = int(b or 0)
+    mb = b / (1024*1024)
+    if mb < 1024: return f"{mb:.1f} MB"
+    gb = mb/1024; return f"{gb:.2f} GB"
+
+def _user_storage_bytes(user_id):
+    total = 0
+    # total = db.session.query(func.coalesce(func.sum(Upload.size_bytes), 0)).filter(Upload.user_id==user_id).scalar() or 0
+    return int(total)
+
 @bp.route("/account")
 @login_required
 def account():
-    user = session.get("user") or {"name":"Convidado","email":"-","company":"-","plan":"basic","renews_at":"—"}
-    return render_template("user_account.html", user=user)
+    u = current_user()
+
+    # assinatura + plano
+    sub = (Subscription.query
+           .filter_by(user_id=u.id)
+           .order_by(Subscription.created_at.desc())
+           .first())
+    plan = None
+    if sub and sub.plan_id:
+        plan = Plan.query.get(sub.plan_id)
+    if not plan and u.plan:  # fallback por slug
+        plan = Plan.query.filter_by(slug=u.plan).first()
+
+    price_m = float((plan.price_month_cents or 0)/100.0) if plan else None
+    price_y = float((plan.price_year_cents or 0)/100.0) if plan else None
+
+    # quotas
+    nfe_quota = plan.max_uploads_month if plan else None
+    # usados no mês:
+    nfe_used_month = 0
+    # nfe_used_month = db.session.query(func.count(NFe.id)).filter(NFe.user_id==u.id, func.date_trunc('month', NFe.created_at)==func.date_trunc('month', func.now())).scalar() or 0
+    nfe_left = (nfe_quota - nfe_used_month) if nfe_quota is not None else None
+
+    # storage
+    used_bytes = _user_storage_bytes(u.id)
+    cap_mb = plan.max_storage_mb if plan else None
+    cap_bytes = cap_mb * 1024 * 1024 if cap_mb else None
+    storage_pct = int((used_bytes*100 // cap_bytes)) if cap_bytes else 0
+
+    acct = dict(
+        plan_name=plan.name if plan else None,
+        cycle=sub.cycle if sub and getattr(sub, "cycle", None) else None,   # 'monthly'|'yearly' se você guardar
+        sub_status=sub.status if sub else None,
+        sub_id=sub.provider_sub_id if sub else None,
+        next_renewal=sub.period_end.strftime("%d/%m/%Y") if (sub and sub.period_end) else None,
+        trial_days_left=max((plan.trial_days or 0) - (datetime.utcnow().date() - u.created_at.date()).days, 0) if (plan and plan.trial_days and u.created_at) else None,
+        price_m=price_m if price_m else None,
+        price_y=price_y if price_y else None,
+
+
+        nfe_quota=nfe_quota,
+        nfe_used_month=nfe_used_month,
+        nfe_left=nfe_left,
+
+        storage_used_human=_human_bytes(used_bytes),
+        storage_cap_human=(f"{cap_mb} MB" if cap_mb else None),
+        storage_pct=storage_pct,
+
+        # se você gerar um link do portal da Stripe server-side, injete aqui:
+        portal_url=None,
+    )
+
+    return render_template("user_account.html", user=u, acct=acct)
+
 
 @bp.route("/account/update", methods=["POST"])
 @login_required
@@ -109,3 +176,4 @@ def password_change():
     db.session.commit()
     flash("Senha alterada.", "success")
     return redirect(url_for("auth.account"))
+

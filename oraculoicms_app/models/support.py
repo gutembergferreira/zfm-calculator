@@ -36,6 +36,7 @@ class FeedbackMessage(db.Model):
     handled_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     handled_at = db.Column(db.DateTime, nullable=True)
     admin_notes = db.Column(db.Text, nullable=True)
+    is_featured = db.Column(db.Boolean, nullable=False, default=False)
 
 class SurveyCampaign(db.Model):
     __tablename__ = "survey_campaigns"

@@ -3,203 +3,542 @@
 {% block page_title %}<i class="bi bi-shield-lock me-1"></i>Administração{% endblock %}
 {% block content %}
 <div class="row g-3">
-  <div class="col-12">
-    <div class="card shadow-sm">
-      <div class="card-body">
-        <ul class="nav nav-tabs" role="tablist">
-          <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#users" type="button" role="tab">Usuários</button></li>
-          <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#plans" type="button" role="tab">Planos</button></li>
-          <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#system" type="button" role="tab">Sistema</button></li>
-        </ul>
-
-        <div class="tab-content pt-3">
-
-          <!-- USERS -->
-          <div class="tab-pane fade show active" id="users" role="tabpanel">
-            <div class="d-flex justify-content-between mb-2">
-              <div class="text-muted">Total: {{ users|length }}</div>
-              <button class="btn btn-sm btn-primary" data-bs-toggle="collapse" data-bs-target="#newUser"><i class="bi bi-person-plus me-1"></i>Novo usuário</button>
-            </div>
-
-            <div id="newUser" class="collapse mb-3">
-              <form class="border rounded p-3" method="post" action="{{ url_for('admin_bp.admin_users_create') }}">
-                <div class="row g-2">
-                  <div class="col-md-3"><input class="form-control form-control-sm" name="name" placeholder="Nome" required></div>
-                  <div class="col-md-3"><input class="form-control form-control-sm" type="email" name="email" placeholder="E-mail" required></div>
-                  <div class="col-md-2"><input class="form-control form-control-sm" name="company" placeholder="Empresa"></div>
-                  <div class="col-md-2"><input class="form-control form-control-sm" name="password" placeholder="Senha (opcional)"></div>
-                  <div class="col-md-2">
-                    <select class="form-select form-select-sm" name="plan">
-                      <option value="basic">Basic</option>
-                      <option value="pro">Pro</option>
-                      <option value="ent">Enterprise</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="text-end mt-2"><button class="btn btn-sm btn-primary">Criar</button></div>
-              </form>
-            </div>
-
-            <div class="table-responsive">
-              <table class="table table-sm table-hover align-middle">
-                <thead class="table-light">
-                  <tr><th>Nome</th><th>E-mail</th><th>Empresa</th><th>Plano</th><th>Admin</th><th>Ativo</th><th></th></tr>
-                </thead>
-                <tbody>
-                  {% for u in users %}
-                  <tr>
-                    <form method="post" action="{{ url_for('admin_bp.admin_users_update', user_id=u.id) }}">
-                      <td><input class="form-control form-control-sm" name="name" value="{{ u.name }}"></td>
-                      <td><input class="form-control form-control-sm" name="email" value="{{ u.email }}"></td>
-                      <td><input class="form-control form-control-sm" name="company" value="{{ u.company or '' }}"></td>
-                      <td>
-                        <select class="form-select form-select-sm" name="plan">
-                          <option value="basic" {% if u.plan=='basic' %}selected{% endif %}>Basic</option>
-                          <option value="pro" {% if u.plan=='pro' %}selected{% endif %}>Pro</option>
-                          <option value="ent" {% if u.plan=='ent' %}selected{% endif %}>Enterprise</option>
-                        </select>
-                      </td>
-                      <td><input class="form-check-input" type="checkbox" name="is_admin" {% if u.is_admin %}checked{% endif %}></td>
-                      <td><input class="form-check-input" type="checkbox" name="active" {% if u.active %}checked{% endif %}></td>
-                      <td class="text-end">
-                        <div class="input-group input-group-sm">
-                          <input class="form-control form-control-sm" type="password" name="password" placeholder="Nova senha">
-                          <button class="btn btn-outline-secondary btn-sm">Salvar</button>
-                        </div>
-                      </td>
-                    </form>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- PLANS -->
-          <div class="tab-pane fade" id="plans" role="tabpanel">
-            <div class="d-flex justify-content-between mb-2">
-              <div class="text-muted">Planos ativos: {{ plans|selectattr('active')|list|length }}</div>
-              <button class="btn btn-sm btn-primary" data-bs-toggle="collapse" data-bs-target="#newPlan"><i class="bi bi-plus-lg me-1"></i>Novo plano</button>
-            </div>
-
-            <div id="newPlan" class="collapse mb-3">
-              <form class="border rounded p-3" method="post" action="{{ url_for('admin_bp.admin_plans_create') }}">
-                <div class="row g-2">
-                  <div class="col-md-2"><input class="form-control form-control-sm" name="slug" placeholder="slug (único)" required></div>
-                  <div class="col-md-3"><input class="form-control form-control-sm" name="name" placeholder="Nome" required></div>
-                  <div class="col-md-2"><input class="form-control form-control-sm" name="price" placeholder="Preço (R$)" required></div>
-                  <div class="col-md-4"><input class="form-control form-control-sm" name="limits" placeholder="Limites (texto)"></div>
-                  <div class="col-md-1 d-flex align-items-center">
-                    <div class="form-check">
-                      <input class="form-check-input" type="checkbox" name="active" checked>
-                      <label class="form-check-label small">Ativo</label>
-                    </div>
-                  </div>
-                </div>
-                <div class="text-end mt-2"><button class="btn btn-sm btn-primary">Criar plano</button></div>
-              </form>
-            </div>
-
-            <div class="table-responsive">
-              <table class="table table-sm table-hover align-middle">
-                <thead class="table-light">
-                  <tr><th>Slug</th><th>Nome</th><th>Preço</th><th>Limites</th><th>Ativo</th><th></th></tr>
-                </thead>
-                <tbody>
-                  {% for p in plans %}
-                  <tr>
-                    <form method="post" action="{{ url_for('admin_bp.admin_plans_update', plan_id=p.id) }}">
-                      <td><input class="form-control form-control-sm" name="slug" value="{{ p.slug }}"></td>
-                      <td><input class="form-control form-control-sm" name="name" value="{{ p.name }}"></td>
-                      <td><input class="form-control form-control-sm" name="price" value="{{ '%.2f'|format(p.price) }}"></td>
-                      <td><input class="form-control form-control-sm" name="limits" value="{{ p.limits }}"></td>
-                      <td><input class="form-check-input" type="checkbox" name="active" {% if p.active %}checked{% endif %}></td>
-                      <td class="text-end"><button class="btn btn-outline-secondary btn-sm">Salvar</button></td>
-                    </form>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- SYSTEM -->
-          <div class="tab-pane fade" id="system" role="tabpanel">
-            <div class="row g-3">
-              <div class="col-md-4"><div class="card h-100"><div class="card-body">
-                <div class="text-muted small mb-2">Status dos serviços</div>
-                <ul class="list-unstyled mb-0">
-                  {% for s in services %}
-                  <li class="d-flex justify-content-between border-bottom py-1">
-                    <span>{{ s.name }}</span>
-                    <span class="badge text-bg-{{ 'success' if s.ok else 'danger' }}">{{ 'OK' if s.ok else 'OFF' }}</span>
-                  </li>
-                  {% endfor %}
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <ul class="nav nav-tabs" role="tablist">
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#users" type="button" role="tab">Usuários</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#plans" type="button" role="tab">Planos</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#system" type="button" role="tab">Sistema</button></li>
                 </ul>
-              </div></div></div>
 
-              <div class="col-md-8"><div class="card h-100"><div class="card-body">
-                <h6 class="mb-3">Configurações de Pagamento</h6>
-                <form method="post" action="{{ url_for('admin_bp.admin_settings_update') }}">
-                  <div class="row g-2">
-                    <div class="col-md-6">
-                      <label class="form-label small">Chave Pix</label>
-                      <input class="form-control form-control-sm" name="pix_key" value="{{ cfg.pix_key }}">
+                <div class="tab-content pt-3">
+
+                    <!-- USERS -->
+                    <div class="tab-pane fade show active" id="users" role="tabpanel">
+                        <div class="d-flex justify-content-between mb-2">
+                            <div class="text-muted">Total: {{ users|length }}</div>
+                            <button class="btn btn-sm btn-primary" data-bs-toggle="collapse" data-bs-target="#newUser">
+                                <i class="bi bi-person-plus me-1"></i>Novo usuário
+                            </button>
+                        </div>
+
+                        <!-- Create user -->
+                        <div id="newUser" class="collapse mb-3">
+                            <form class="border rounded p-3" method="post" action="{{ url_for('admin_bp.admin_users_create') }}">
+                                <div class="row g-2">
+                                    <div class="col-md-3">
+                                        <label class="form-label small mb-1">Nome</label>
+                                        <input class="form-control form-control-sm" name="name" placeholder="Nome" required>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label small mb-1">E-mail</label>
+                                        <input class="form-control form-control-sm" type="email" name="email" placeholder="E-mail" required>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-1">Empresa</label>
+                                        <input class="form-control form-control-sm" name="company" placeholder="Empresa">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-1">Senha (opcional)</label>
+                                        <input class="form-control form-control-sm" name="password" placeholder="Senha (opcional)">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small mb-1">Plano</label>
+                                        <select class="form-select form-select-sm" name="plan">
+                                            {% for p in plans if p.active %}
+                                            <option value="{{ p.slug }}">{{ p.name }} ({{ p.slug }})</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="text-end mt-2">
+                                    <button class="btn btn-sm btn-primary">Criar</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- List / edit users -->
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle">
+                                <thead class="table-light">
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>E-mail</th>
+                                    <th>Empresa</th>
+                                    <th>Plano</th>
+                                    <th>Admin</th>
+                                    <th>Ativo</th>
+                                    <th>Criado em</th>
+                                    <th></th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for u in users %}
+                                <tr>
+                                    <form method="post" action="{{ url_for('admin_bp.admin_users_update', user_id=u.id) }}">
+                                        <td style="min-width:200px">
+                                            <input class="form-control form-control-sm" name="name" value="{{ u.name }}">
+                                        </td>
+                                        <td style="min-width:220px">
+                                            <input class="form-control form-control-sm" name="email" value="{{ u.email }}">
+                                        </td>
+                                        <td style="min-width:160px">
+                                            <input class="form-control form-control-sm" name="company" value="{{ u.company or '' }}">
+                                        </td>
+                                        <td style="min-width:200px">
+                                            <select class="form-select form-select-sm" name="plan">
+                                                {% for p in plans if p.active %}
+                                                <option value="{{ p.slug }}" {% if u.plan == p.slug %}selected{% endif %}>
+                                                    {{ p.name }} ({{ p.slug }})
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </td>
+                                        <td class="text-center">
+                                            <input class="form-check-input" type="checkbox" name="is_admin" {% if u.is_admin %}checked{% endif %}>
+                                        </td>
+                                        <td class="text-center">
+                                            <input class="form-check-input" type="checkbox" name="active" {% if u.active %}checked{% endif %}>
+                                        </td>
+                                        <td class="text-muted small">
+                                            {% if u.created_at %}{{ u.created_at.strftime('%d/%m/%Y %H:%M') }}{% else %}-{% endif %}
+                                        </td>
+                                        <td class="text-end" style="min-width:260px">
+                                            <div class="input-group input-group-sm">
+                                                <input class="form-control form-control-sm" type="password" name="password" placeholder="Nova senha">
+                                                <button class="btn btn-outline-secondary btn-sm">Salvar</button>
+                                            </div>
+                                        </td>
+                                    </form>
+                                </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div class="col-md-6">
-                      <label class="form-label small">Recebedor (nome/empresa)</label>
-                      <input class="form-control form-control-sm" name="pix_receiver" value="{{ cfg.pix_receiver }}">
+
+
+                    <!-- PLANS -->
+                    <div class="tab-pane fade" id="plans" role="tabpanel">
+                        <div class="d-flex justify-content-between mb-2">
+                            <div class="text-muted">Planos ativos: {{ plans|selectattr('active')|list|length }}</div>
+                            <button class="btn btn-sm btn-primary" data-bs-toggle="collapse" data-bs-target="#newPlan">
+                                <i class="bi bi-plus-lg me-1"></i>Novo plano
+                            </button>
+                        </div>
+
+                        <!-- CREATE PLAN -->
+                        <div id="newPlan" class="collapse mb-3">
+                            <form class="border rounded p-3" method="post" action="{{ url_for('admin_bp.admin_plans_create') }}">
+                                <div class="row g-2">
+                                    <div class="col-md-2">
+                                        <label class="form-label small">Slug (único)</label>
+                                        <input class="form-control form-control-sm" name="slug" placeholder="basic" required>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label small">Nome</label>
+                                        <input class="form-control form-control-sm" name="name" placeholder="Básico" required>
+                                    </div>
+
+                                    <!-- Preços em R$ -->
+                                    <div class="col-md-3">
+                                        <label class="form-label small">Mensal (R$)</label>
+                                        <input class="form-control form-control-sm" name="price_month" placeholder="49,90">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label small">Anual (R$)</label>
+                                        <input class="form-control form-control-sm" name="price_year" placeholder="499,00">
+                                    </div>
+
+                                    <!-- Stripe price IDs -->
+                                    <div class="col-md-3">
+                                        <label class="form-label small">Stripe price (mensal)</label>
+                                        <input class="form-control form-control-sm" name="stripe_price_monthly_id" placeholder="price_xxx">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label small">Stripe price (anual)</label>
+                                        <input class="form-control form-control-sm" name="stripe_price_yearly_id" placeholder="price_xxx">
+                                    </div>
+
+                                    <!-- Trial e limites -->
+                                    <div class="col-md-2">
+                                        <label class="form-label small">Trial (dias)</label>
+                                        <input class="form-control form-control-sm" type="number" min="0" name="trial_days" value="0">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small">XML trial (qtd)</label>
+                                        <input class="form-control form-control-sm" type="number" min="0" name="trial_xml_quota" value="0">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small">Máx. arquivos</label>
+                                        <input class="form-control form-control-sm" type="number" min="0" name="max_files" value="0">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small">Espaço (MB)</label>
+                                        <input class="form-control form-control-sm" type="number" min="0" name="max_storage_mb" value="0">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small">Uploads/mês</label>
+                                        <input class="form-control form-control-sm" type="number" min="0" name="max_uploads_month" value="0">
+                                    </div>
+
+                                    <!-- Descrição -->
+                                    <div class="col-12">
+                                        <label class="form-label small">Descrição (Markdown)</label>
+                                        <textarea class="form-control form-control-sm" name="description_md" rows="2"
+                                                  placeholder="Benefícios e limites do plano..."></textarea>
+                                    </div>
+
+                                    <div class="col-md-1 d-flex align-items-center">
+                                        <div class="form-check mt-4">
+                                            <input class="form-check-input" type="checkbox" name="active" id="newplan_active" checked>
+                                            <label class="form-check-label small" for="newplan_active">Ativo</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-end mt-2">
+                                    <button class="btn btn-sm btn-primary">Criar plano</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- LIST/EDIT PLANS -->
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle">
+                                <thead class="table-light">
+                                <tr>
+                                    <th>Slug</th>
+                                    <th>Nome</th>
+                                    <th style="min-width:100px">Preços</th>
+                                    <th>Ativo</th>
+                                    <th style="min-width:260px">Stripe prices</th>
+                                    <th>Trial</th>
+                                    <th style="min-width:320px">Limites</th>
+                                    <th>Descrição</th>
+                                    <th></th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for p in plans %}
+                                <tr>
+                                    <form method="post" action="{{ url_for('admin_bp.admin_plans_update', plan_id=p.id) }}">
+                                        <td>
+                                            <input class="form-control form-control-sm" name="slug" value="{{ p.slug }}">
+                                        </td>
+                                        <td>
+                                            <input class="form-control form-control-sm" name="name" value="{{ p.name }}">
+                                        </td>
+
+                                        <!-- preços -->
+                                        <td>
+                                            <div class="input-group input-group-sm mb-1">
+                                                <span class="input-group-text">Mensal</span>
+                                                <input class="form-control" name="price_month"
+                                                       value="{{ ('%.2f' % ((p.price_month_cents or 0)/100.0)) }}">
+                                            </div>
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text">Anual</span>
+                                                <input class="form-control" name="price_year"
+                                                       value="{{ ('%.2f' % ((p.price_year_cents or 0)/100.0)) }}">
+                                            </div>
+                                        </td>
+
+                                        <!-- ativo -->
+                                        <td class="text-center">
+                                            <input class="form-check-input" type="checkbox" name="active" {% if p.active %}checked{% endif %}>
+                                        </td>
+
+                                        <!-- stripe price ids -->
+                                        <td>
+                                            <div class="mb-1">
+                                                <label class="form-label small mb-0">Mensal</label>
+                                                <input class="form-control form-control-sm" name="stripe_price_monthly_id"
+                                                       value="{{ p.stripe_price_monthly_id or '' }}">
+                                            </div>
+                                            <div>
+                                                <label class="form-label small mb-0">Anual</label>
+                                                <input class="form-control form-control-sm" name="stripe_price_yearly_id"
+                                                       value="{{ p.stripe_price_yearly_id or '' }}">
+                                            </div>
+                                        </td>
+
+                                        <!-- trial -->
+                                        <td>
+                                            <div class="input-group input-group-sm mb-1">
+                                                <span class="input-group-text">Dias</span>
+                                                <input class="form-control" type="number" min="0" name="trial_days" value="{{ p.trial_days or 0 }}">
+                                            </div>
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text">XML</span>
+                                                <input class="form-control" type="number" min="0" name="trial_xml_quota" value="{{ p.trial_xml_quota or 0 }}">
+                                            </div>
+                                        </td>
+
+                                        <!-- limites -->
+                                        <td>
+                                            <div class="row g-1">
+                                                <div class="col-4">
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">Arq</span>
+                                                        <input class="form-control" type="number" min="0" name="max_files" value="{{ p.max_files or 0 }}">
+                                                    </div>
+                                                </div>
+                                                <div class="col-4">
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">MB</span>
+                                                        <input class="form-control" type="number" min="0" name="max_storage_mb" value="{{ p.max_storage_mb or 0 }}">
+                                                    </div>
+                                                </div>
+                                                <div class="col-4">
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">Up/mês</span>
+                                                        <input class="form-control" type="number" min="0" name="max_uploads_month" value="{{ p.max_uploads_month or 0 }}">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        <!-- descrição -->
+                                        <td style="min-width:260px">
+                                            <textarea class="form-control form-control-sm" name="description_md" rows="2">{{ p.description_md or '' }}</textarea>
+                                        </td>
+
+                                        <td class="text-end">
+                                            <button class="btn btn-outline-secondary btn-sm">Salvar</button>
+                                        </td>
+                                    </form>
+                                </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div class="col-md-8">
-                      <label class="form-label small">Webhook URL</label>
-                      <input class="form-control form-control-sm" name="webhook_url" value="{{ cfg.webhook_url }}">
-                    </div>
-                    <div class="col-md-4">
-                      <label class="form-label small">Webhook Secret</label>
-                      <input class="form-control form-control-sm" name="webhook_secret" value="{{ cfg.webhook_secret }}">
+         <!-- SYSTEM -->
+          <div class="tab-pane fade" id="system" role="tabpanel">
+
+            <div class="row g-3">
+              <!-- Status dos serviços -->
+              <div class="col-md-5">
+                <div class="card h-100">
+                  <div class="card-body">
+                    <h6 class="mb-3">Status dos serviços</h6>
+                    <ul class="list-unstyled mb-0">
+                      {% for s in sys_status %}
+                        <li class="d-flex justify-content-between border-bottom py-2">
+                          <div>
+                            <strong>{{ s.name }}</strong>
+                            {% if s.detail %}
+                              <div class="small text-muted">{{ s.detail }}</div>
+                            {% endif %}
+                          </div>
+                          <span class="badge text-bg-{{ 'success' if s.ok else 'danger' }}">
+                            {{ 'OK' if s.ok else 'OFF' }}
+                          </span>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Informações do servidor -->
+              <div class="col-md-7">
+                <div class="card h-100">
+                  <div class="card-body">
+                    <h6 class="mb-3">Informações do servidor</h6>
+                    <div class="table-responsive">
+                      <table class="table table-sm mb-0">
+                        <tbody>
+                          <tr><th class="w-25">Hostname</th><td>{{ server_info.hostname }}</td></tr>
+                          <tr><th>SO</th><td>{{ server_info.os }} ({{ server_info.arch }})</td></tr>
+                          <tr><th>Python</th><td>{{ server_info.python }}</td></tr>
+                          <tr><th>Timezone</th><td>{{ server_info.timezone }}</td></tr>
+                          <tr><th>PID</th><td>{{ server_info.pid }}</td></tr>
+                          <tr><th>Iniciado em</th><td>{{ server_info.started_at }}</td></tr>
+                        </tbody>
+                      </table>
                     </div>
                   </div>
-                  <div class="text-end mt-3">
-                    <button class="btn btn-primary btn-sm">Salvar configurações</button>
-                    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin_bp.admin_payments') }}"><i class="bi bi-cash-coin me-1"></i>Ver pagamentos</a>
-                  </div>
-                </form>
-              </div></div></div>
+                </div>
+              </div>
             </div>
 
             <hr class="my-3">
 
-            <div>
-              <h6 class="mb-2">Últimos pagamentos</h6>
-              <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle">
-                  <thead class="table-light">
-                    <tr><th>Data</th><th>Cliente</th><th>Valor</th><th>Status</th><th>Meio</th><th>Ref</th></tr>
-                  </thead>
-                  <tbody>
-                    {% for p in payments %}
-                    <tr>
-                      <td>{{ p.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
-                      <td>{{ p.user.name }} ({{ p.user.email }})</td>
-                      <td>R$ {{ '%.2f'|format(p.amount) }}</td>
-                      <td>{{ p.status }}</td>
-                      <td>{{ p.provider }}</td>
-                      <td class="text-muted small">{{ p.external_id or '-' }}</td>
-                    </tr>
-                    {% endfor %}
-                    {% if not payments %}
-                    <tr><td colspan="6" class="text-center text-muted">Sem pagamentos recentes.</td></tr>
-                    {% endif %}
-                  </tbody>
-                </table>
+            <!-- Bloco 'Configurações' (conteúdo da config.html) -->
+            <div class="row g-3">
+              <div class="col-12">
+                <div class="card shadow-sm">
+                  <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center">
+                      <div>
+                        <div class="text-muted small">Planilha conectada</div>
+                        <div class="h6 mb-0">{{ sheet_title or '—' }}</div>
+                        <div class="small text-muted">Service Account: <code>{{ service_email or '—' }}</code></div>
+                      </div>
+                      <div class="d-flex gap-2">
+                        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('nfe.admin_reload') }}">
+                          <i class="bi bi-arrow-clockwise me-1"></i>Recarregar parâmetros
+                        </a>
+                        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('nfe.run_update') }}">
+                          <i class="bi bi-cloud-download me-1"></i>Rodar atualizador (AM)
+                        </a>
+                        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('nfe.config_view') }}">
+                          <i class="bi bi-gear me-1"></i>Ver página completa de configurações
+                        </a>
+                      </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="row g-3">
+                      <div class="col-md-6">
+                        <div class="card h-100">
+                          <div class="card-body">
+                            <div class="text-muted small mb-2">Abas encontradas</div>
+                            <ul class="list-group list-group-flush">
+                              {% for ws in worksheets %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                  <span>{{ ws.title }}</span>
+                                  <span class="badge text-bg-light">{{ ws.rows }} x {{ ws.cols }}</span>
+                                </li>
+                              {% endfor %}
+                              {% if not worksheets %}
+                                <li class="list-group-item text-muted">Nenhuma aba encontrada.</li>
+                              {% endif %}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="col-md-6">
+                        <div class="card h-100">
+                          <div class="card-body">
+                            <div class="text-muted small mb-2">Resumo</div>
+                            <div class="row row-cols-2 g-2">
+                              <div class="col">
+                                <div class="stat">
+                                  <div class="label">Atualizado às</div>
+                                  <div class="value">{{ updated_at or '—' }}</div>
+                                </div>
+                              </div>
+                              <div class="col">
+                                <div class="stat">
+                                  <div class="label">Fontes ativas</div>
+                                  <div class="value">{{ sources_count or 0 }}</div>
+                                </div>
+                              </div>
+                            </div>
+                            <div class="small text-muted mt-2">
+                              Caso altere permissões da planilha, lembre-se de compartilhar com a service account acima.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div> <!-- /row inner -->
+
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <hr class="my-3">
+
+            <!-- Configurações ativas (somente leitura) -->
+            <div class="card mb-3">
+              <div class="card-body">
+                <h6 class="mb-3">Configurações ativas</h6>
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle">
+                    <thead class="table-light">
+                      <tr><th>Chave</th><th>Valor</th></tr>
+                    </thead>
+                    <tbody>
+                      {% for k, v in app_cfg.items() %}
+                        <tr>
+                          <td class="fw-semibold">{{ k }}</td>
+                          <td><code class="small">{{ v }}</code></td>
+                        </tr>
+                      {% endfor %}
+                      {% if not app_cfg %}
+                        <tr><td colspan="2" class="text-center text-muted">Sem informações.</td></tr>
+                      {% endif %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Editor de .env -->
+            <div class="card">
+              <div class="card-body">
+                <h6 class="mb-1">Variáveis de ambiente (.env)</h6>
+                <div class="text-muted small mb-2">Arquivo: <code>{{ env_path }}</code></div>
+
+                <form method="post" action="{{ url_for('admin_bp.admin_env_update') }}">
+                  <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                      <thead class="table-light">
+                        <tr><th style="width: 32%">Chave</th><th>Valor</th><th style="width:1%"></th></tr>
+                      </thead>
+                      <tbody id="envTable">
+                        {% for k, v in env_vars.items() %}
+                          <tr>
+                            <td><input class="form-control form-control-sm" name="key" value="{{ k }}"></td>
+                            <td><input class="form-control form-control-sm" name="value" value="{{ v }}"></td>
+                            <td>
+                              <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('tr').remove()">
+                                <i class="bi bi-x"></i>
+                              </button>
+                            </td>
+                          </tr>
+                        {% endfor %}
+                        {% if not env_vars %}
+                          <tr>
+                            <td><input class="form-control form-control-sm" name="key" placeholder="NOVA_CHAVE"></td>
+                            <td><input class="form-control form-control-sm" name="value" placeholder="valor"></td>
+                            <td></td>
+                          </tr>
+                        {% endif %}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div class="d-flex justify-content-between">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="addEnvRow()">+ Adicionar linha</button>
+                    <div>
+                      <button class="btn btn-primary btn-sm">Salvar .env</button>
+                      <span class="text-muted small ms-2">Após salvar, reinicie a aplicação para aplicar totalmente.</span>
+                    </div>
+                  </div>
+                </form>
               </div>
             </div>
 
           </div> <!-- /system -->
 
+
+
+                </div>
+            </div>
         </div>
-      </div>
     </div>
-  </div>
 </div>
+
+<script>
+function addEnvRow() {
+  const tbody = document.getElementById('envTable');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input class="form-control form-control-sm" name="key" placeholder="NOVA_CHAVE"></td>
+    <td><input class="form-control form-control-sm" name="value" placeholder="valor"></td>
+    <td>
+      <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('tr').remove()">
+        <i class="bi bi-x"></i>
+      </button>
+    </td>`;
+  tbody.appendChild(tr);
+}
+</script>
 {% endblock %}

@@ -10,35 +10,97 @@
       <option value="lido" {{ status=='lido' and 'selected' or '' }}>Lidos</option>
       <option value="resolvido" {{ status=='resolvido' and 'selected' or '' }}>Resolvidos</option>
     </select>
-    <button class="btn btn-outline-secondary"><i class="bi bi-filter"></i> Filtrar</button>
+    <button class="btn btn-outline-secondary">
+      <i class="bi bi-filter me-1"></i> Filtrar
+    </button>
   </form>
 
   <div class="card shadow-sm">
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
-        <thead class="table-light"><tr><th>#</th><th>Categoria</th><th>Assunto</th><th>Mensagem</th><th>Usuário</th><th>Status</th><th class="text-end">Ações</th></tr></thead>
+        <thead class="table-light">
+          <tr>
+            <th>#</th>
+            <th>Categoria</th>
+            <th>Assunto</th>
+            <th>Mensagem</th>
+            <th>Usuário</th>
+            <th>Status</th>
+            <th class="text-end">Ações</th>
+          </tr>
+        </thead>
         <tbody>
           {% for r in rows %}
+          {% set is_read = (r.status in ['lido','resolvido']) %}
+          {% set is_resolved = (r.status == 'resolvido') %}
           <tr>
             <td class="text-muted">{{ r.id }}</td>
             <td><span class="badge bg-secondary text-uppercase">{{ r.category }}</span></td>
             <td>{{ r.subject }}</td>
             <td class="text-truncate" style="max-width:420px" title="{{ r.message }}">{{ r.message }}</td>
-            <td>{{ r.user_id or '—' }}</td>
+
             <td>
-              {% if r.status=='novo' %}<span class="badge bg-primary">Novo</span>
-              {% elif r.status=='lido' %}<span class="badge bg-info text-dark">Lido</span>
-              {% else %}<span class="badge bg-success">Resolvido</span>{% endif %}
+              {% if r.user and r.user.name %}
+                {{ r.user.name }}
+                {% if r.user.email %}<span class="text-muted small">({{ r.user.email }})</span>{% endif %}
+              {% elif r.user_name %}
+                {{ r.user_name }}
+              {% else %}
+                —
+              {% endif %}
             </td>
+
+            <td>
+              {# Lido / Não lido #}
+              {% if is_read %}
+                <span class="badge bg-info text-dark me-1">Lido</span>
+              {% else %}
+                <span class="badge bg-light text-dark border me-1">Não lido</span>
+              {% endif %}
+
+              {# Resolvido / Não resolvido #}
+              {% if is_resolved %}
+                <span class="badge bg-success me-1">Resolvido</span>
+              {% else %}
+                <span class="badge bg-light text-dark border me-1">Não resolvido</span>
+              {% endif %}
+
+              {# Destacado #}
+              {% if r.is_featured %}
+                <span class="badge bg-warning text-dark">Destacado</span>
+              {% endif %}
+            </td>
+
             <td class="text-end">
-              <form method="post" action="{{ url_for('support_admin.fb_set_status', id=r.id) }}" class="d-inline">
-                <input type="hidden" name="status" value="lido">
-                <button class="btn btn-outline-secondary btn-sm">Marcar lido</button>
-              </form>
-              <form method="post" action="{{ url_for('support_admin.fb_set_status', id=r.id) }}" class="d-inline">
-                <input type="hidden" name="status" value="resolvido">
-                <button class="btn btn-outline-success btn-sm">Resolver</button>
-              </form>
+              <div class="btn-group btn-group-sm">
+                <form method="post" action="{{ url_for('support_admin.fb_set_status', id=r.id) }}">
+                  <input type="hidden" name="status" value="lido">
+                  <button class="btn btn-outline-secondary" title="Marcar como lido">
+                    <i class="bi bi-envelope-open"></i>
+                  </button>
+                </form>
+
+                <form method="post" action="{{ url_for('support_admin.fb_set_status', id=r.id) }}">
+                  <input type="hidden" name="status" value="resolvido">
+                  <button class="btn btn-outline-success" title="Marcar como resolvido">
+                    <i class="bi bi-check2-circle"></i>
+                  </button>
+                </form>
+
+                {% if r.is_featured %}
+                  <form method="post" action="{{ url_for('support_admin.fb_toggle_feature', id=r.id) }}">
+                    <button class="btn btn-outline-warning" title="Remover destaque">
+                      <i class="bi bi-star-fill"></i>
+                    </button>
+                  </form>
+                {% else %}
+                  <form method="post" action="{{ url_for('support_admin.fb_toggle_feature', id=r.id) }}">
+                    <button class="btn btn-outline-warning" title="Destacar para a landing">
+                      <i class="bi bi-star"></i>
+                    </button>
+                  </form>
+                {% endif %}
+              </div>
             </td>
           </tr>
           {% else %}

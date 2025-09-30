@@ -1,49 +1,103 @@
 {% extends 'base.html' %}
 {% block title %}Checkout — ZFM Calculator{% endblock %}
 {% block page_title %}<i class="bi bi-credit-card me-1"></i>Checkout{% endblock %}
+
 {% block content %}
 <div class="row g-3">
   <div class="col-lg-7">
     <div class="card shadow-sm h-100"><div class="card-body">
       <h6 class="mb-3">Escolha seu plano</h6>
+
       <form method="post">
         <div class="row g-3">
           {% for p in plans %}
+          {% set price_m = ((p.price_month_cents or 0) / 100.0) %}
+          {% set price_y = ((p.price_year_cents  or 0) / 100.0) %}
           <div class="col-md-6">
             <div class="form-check border rounded p-3 h-100">
-              <input class="form-check-input" type="radio" name="plan" id="pl{{ loop.index }}" value="{{ p.id }}" {% if loop.first %}checked{% endif %}>
+              <input class="form-check-input" type="radio" id="pl{{ loop.index }}"
+                     name="plan_id" value="{{ p.id }}" {% if loop.first %}checked{% endif %}>
               <label class="form-check-label w-100" for="pl{{ loop.index }}">
                 <div class="d-flex justify-content-between">
                   <strong>{{ p.name }}</strong>
-                  <span>R$ {{ '%.2f'|format(p.price) }}/mês</span>
+                  <span class="text-muted small plan-price"
+                        data-month="{{ '%.2f' % price_m }}"
+                        data-year="{{ '%.2f' % price_y }}"
+                        data-has-year="{{ 1 if p.price_year_cents else 0 }}">
+                    R$ {{ '%.2f' % price_m }}/mês
+                  </span>
                 </div>
-                <div class="text-muted small">{{ p.desc }}</div>
+                {% if p.description_md %}
+                  <div class="small mt-1 text-muted">{{ p.description_md }}</div>
+                {% endif %}
+                {% if p.trial_days and p.trial_days > 0 %}
+                  <div class="badge text-bg-success mt-2">Teste grátis {{ p.trial_days }} dias</div>
+                {% endif %}
               </label>
             </div>
           </div>
           {% endfor %}
         </div>
-        <hr>
-        <h6 class="mb-2">Pagamento</h6>
-        <div class="row g-2">
-          <div class="col-md-6"><input class="form-control" placeholder="Titular do cartão"></div>
-          <div class="col-md-6"><input class="form-control" placeholder="Número do cartão"></div>
-          <div class="col-md-4"><input class="form-control" placeholder="Validade (MM/AA)"></div>
-          <div class="col-md-4"><input class="form-control" placeholder="CVV"></div>
-          <div class="col-md-4"><input class="form-control" placeholder="CPF/CNPJ"></div>
+
+        <hr class="my-3">
+
+        <div class="row g-2 align-items-center">
+          <div class="col-auto">
+            <label class="form-label mb-0">Ciclo:</label>
+          </div>
+          <div class="col-auto">
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="cycle" id="cycM" value="monthly" checked>
+              <label class="form-check-label" for="cycM">Mensal</label>
+            </div>
+            {% set has_year_global = (plans | map(attribute='price_year_cents') | select | list | length) > 0 %}
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="cycle" id="cycY" value="yearly"
+                     {% if not has_year_global %}disabled{% endif %}>
+              <label class="form-check-label" for="cycY">Anual
+                {% if has_year_global %}<span class="small text-muted">(economize)</span>{% endif %}
+              </label>
+            </div>
+          </div>
+          <div class="col-auto ms-auto">
+            <button class="btn btn-primary">Continuar para pagamento</button>
+          </div>
         </div>
-        <button class="btn btn-primary mt-3">Assinar agora</button>
       </form>
     </div></div>
   </div>
+
   <div class="col-lg-5">
     <div class="card shadow-sm h-100"><div class="card-body">
-      <h6 class="mb-3">Resumo</h6>
-      <div class="d-flex justify-content-between"><span>Plano selecionado</span><strong id="resPlano">—</strong></div>
-      <div class="d-flex justify-content-between border-bottom pb-2"><span>Subtotal</span><strong>R$ 0,00</strong></div>
-      <div class="d-flex justify-content-between pt-2"><span>Total</span><strong>R$ 0,00</strong></div>
-      <div class="small text-muted mt-2">Cobrança recorrente mensal. Você pode cancelar quando quiser.</div>
+      <h6 class="mb-3">Como funciona</h6>
+      <ol class="small mb-0">
+        <li>Escolha o plano e o ciclo (mensal/anual).</li>
+        <li>Você será direcionado ao checkout da Stripe.</li>
+        <li>Assinatura criada → voltamos e ativamos seu plano automaticamente.</li>
+      </ol>
     </div></div>
   </div>
 </div>
+
+<script>
+(function () {
+  function updatePrices() {
+    var yearly = document.getElementById('cycY') && document.getElementById('cycY').checked;
+    var els = document.querySelectorAll('.plan-price');
+    els.forEach(function (el) {
+      var m = el.getAttribute('data-month');
+      var y = el.getAttribute('data-year');
+      var hasYear = el.getAttribute('data-has-year') === '1';
+      if (yearly && hasYear && y && y !== "0.00") {
+        el.textContent = "R$ " + y + "/ano";
+      } else {
+        el.textContent = "R$ " + m + "/mês";
+      }
+    });
+  }
+  var radios = document.querySelectorAll('input[name="cycle"]');
+  radios.forEach(function (r) { r.addEventListener('change', updatePrices); });
+  updatePrices();
+})();
+</script>
 {% endblock %}
