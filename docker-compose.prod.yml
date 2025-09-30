@@ -1,0 +1,33 @@
+version: "3.9"
+services:
+  web-prod:
+    build: .
+    image: oraculoicms:prod
+    env_file:
+      - .env.production
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "flask db upgrade || flask init-db && gunicorn -w 4 -k gevent -b 0.0.0.0:${APP_PORT:-8000} oraculoicms_app.wsgi:app"
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: oraculoicms
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d oraculoicms"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - pg_prod:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  pg_prod:

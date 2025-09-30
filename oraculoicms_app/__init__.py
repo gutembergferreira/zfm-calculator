@@ -1,8 +1,11 @@
 # zfm_app/__init__.py
 # -*- coding: utf-8 -*-
 from __future__ import annotations
+
+import os
+
 from flask import Flask
-from config import Config
+from config import Config, TestingConfig, StagingConfig, ProductionConfig
 from .blueprints.admin import admin_bp
 from .extensions import db, bcrypt, migrate, scheduler, init_extensions, register_cli
 from .services.sheets_service import init_sheets
@@ -18,9 +21,17 @@ from datetime import datetime
 
 def create_app(config_object: type[Config] = Config) -> Flask:
     app = Flask(__name__, template_folder="../templates", static_folder="../static")
-    app.config.from_object(config_object)
+    app_env = os.getenv("APP_ENV", "").lower()
+    if app_env == "testing":
+        app.config.from_object(TestingConfig)
+    elif app_env == "staging":
+        app.config.from_object(StagingConfig)
+    elif app_env == "production":
+        app.config.from_object(ProductionConfig)
+    else:
+        app.config.from_object(Config)
 
-    # Extensões (DB/Bcrypt/Migrate/Scheduler)
+        # Extensões (DB/Bcrypt/Migrate/Scheduler)
     init_extensions(app)
 
     # Serviços (Sheets + Motor de cálculo) — ficam disponíveis em app.extensions
@@ -41,8 +52,9 @@ def create_app(config_object: type[Config] = Config) -> Flask:
     register_cli(app)
 
     # Scheduler (ex.: dia 1 às 03:00 — atualizador AM)
-    if not scheduler.running:
-        scheduler.start()
+    if app.config.get("ENABLE_SCHEDULER", False):
+        if not scheduler.running:
+            scheduler.start()
 
     @app.template_filter("datetimeformat")
     def datetimeformat(value, fmt="%d/%m/%Y %H:%M"):

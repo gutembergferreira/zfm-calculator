@@ -55,3 +55,8 @@ def purge_my_xmls():
     # db.session.commit()
     flash("Todos os seus XMLs foram removidos.", "success")
     return redirect(url_for("auth.account"))
+
+
+@bp.route("/health")
+def health():
+    return {"status": "ok"}, 200

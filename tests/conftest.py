@@ -8,6 +8,14 @@ import types
 import pytest
 import stripe
 
+
+@pytest.fixture(autouse=True, scope="session")
+def testing_env():
+    os.environ["APP_ENV"] = "testing"
+    os.environ.setdefault("SQLALCHEMY_TEST_DATABASE_URI", "postgresql+psycopg2://postgres:postgres@localhost:5432/oraculoicms_test")
+    yield
+
+
 # Garante que a raiz do projeto está no sys.path
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
