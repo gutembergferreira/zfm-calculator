@@ -15,18 +15,34 @@ pipeline {
       steps { sh 'docker build -t ${IMAGE} -f Dockerfile .' }
     }
 
-    stage('Start DB (tests)') {
-      steps {
-        sh '''
-          docker compose -f ${COMPOSE_BASE} up -d db
-          echo "Aguardando Postgres..."
-          for i in {1..60}; do docker compose -f ${COMPOSE_BASE} exec -T db pg_isready -U postgres && break; sleep 2; done
-          echo "Criando banco de testes..."
-          docker compose -f ${COMPOSE_BASE} exec -T db psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname='oraculoicms_test'" | grep -q 1 \
-            || docker compose -f ${COMPOSE_BASE} exec -T db psql -U postgres -c "CREATE DATABASE oraculoicms_test;"
-        '''
-      }
-    }
+	stage('Start DB (tests)') {
+	  steps {
+		sh '''
+		  set -e
+
+		  # Sobe só o serviço de DB do compose base
+		  docker compose -f ${COMPOSE_BASE} up -d db
+
+		  echo "Aguardando Postgres ficar pronto..."
+		  # Loop robusto: testa pg_isready até OK (timeout ~120s)
+		  for i in $(seq 1 60); do
+			if docker compose -f ${COMPOSE_BASE} exec -T db pg_isready -U postgres -d postgres >/dev/null 2>&1; then
+			  echo "Postgres OK (pg_isready)."
+			  break
+			fi
+			echo "Postgres ainda não respondeu... tentativa ${i}/60"
+			sleep 2
+		  done
+
+		  # Falha se ainda não respondeu
+		  docker compose -f ${COMPOSE_BASE} exec -T db pg_isready -U postgres -d postgres
+
+		  echo "Criando database de testes (oraculoicms_test), se não existir..."
+		  docker compose -f ${COMPOSE_BASE} exec -T db psql -U postgres -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='oraculoicms_test'" | grep -q 1 \
+			|| docker compose -f ${COMPOSE_BASE} exec -T db psql -U postgres -d postgres -c "CREATE DATABASE oraculoicms_test;"
+			'''
+		  }
+		}
 
     stage('Migrate (tests)') {
       steps {
