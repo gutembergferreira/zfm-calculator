@@ -8,3 +8,6 @@ __pycache__
 /uploads
 htmlcov
 .coverage
+.env.test
+.env.staging
+.env.production
