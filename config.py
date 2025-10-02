@@ -9,10 +9,10 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 class Config:
     FLASK_ENV = os.getenv("FLASK_ENV","development")
     FLASK_DEBUG = os.getenv("FLASK_DEBUG","1")
-    FLASK_APP = os.getenv("FLASK_APP","oraculoicms_app")
+    FLASK_APP = os.getenv("FLASK_APP", "oraculoicms_app.wsgi")
     # Flask
     SECRET_KEY = os.getenv("SECRET_KEY", "zfmbet410")
-    SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "zfm_session")
+    SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "oraculoicms_session")
     # GOOGLE APIS
     SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
     GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "./service_account.json")
@@ -48,3 +48,30 @@ class Config:
     STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
     STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", "http://localhost:5000/billing/sucesso")
     STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", "http://localhost:5000/billing/cancelado")
+
+class TestingConfig(Config):
+    TESTING = True
+    FLASK_ENV = "testing"
+    FLASK_DEBUG = "0"
+    # Banco de testes (CI). O Jenkins injeta essa variável nos containers,
+    # mas deixamos um default seguro local:
+    SQLALCHEMY_DATABASE_URI = os.getenv(
+        "SQLALCHEMY_DATABASE_URI",
+        "postgresql+psycopg2://postgres:postgres@localhost:5432/oraculoicms_test"
+    )
+
+class StagingConfig(Config):
+    FLASK_ENV = "staging"
+    FLASK_DEBUG = "0"
+    SQLALCHEMY_DATABASE_URI = os.getenv(
+        "SQLALCHEMY_DATABASE_URI",
+        "postgresql+psycopg2://postgres:postgres@db:5432/oraculoicms_staging"
+    )
+
+class ProductionConfig(Config):
+    FLASK_ENV = "production"
+    FLASK_DEBUG = "0"
+    SQLALCHEMY_DATABASE_URI = os.getenv(
+        "SQLALCHEMY_DATABASE_URI",
+        "postgresql+psycopg2://postgres:postgres@db:5432/oraculoicms"
+    )

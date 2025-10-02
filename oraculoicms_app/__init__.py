@@ -20,8 +20,11 @@ from .blueprints.billing import bp as billing_bp
 from datetime import datetime
 
 def create_app(config_object: type[Config] = Config) -> Flask:
+
+
     app = Flask(__name__, template_folder="../templates", static_folder="../static")
     app_env = os.getenv("APP_ENV", "").lower()
+
     if app_env == "testing":
         app.config.from_object(TestingConfig)
     elif app_env == "staging":
