@@ -111,14 +111,8 @@ pipeline {
 
     stage('SonarQube Analysis') {
       steps {
-        withSonarQubeEnv('SonarQube') {
-          sh '''
-            docker run --rm -v $PWD:/usr/src sonarsource/sonar-scanner-cli \
-              -Dsonar.projectBaseDir=/usr/src \
-              -Dsonar.host.url=http://10.0.0.200:9001 \
-              -Dsonar.projectKey=oraculoicms \
-              -Dsonar.login=sqp_72db57058dcfe7460cc77b6494662159def5bb01 || true
-          '''
+		  withSonarQubeEnv(installationName: 'SonarQube MG') { // Use the name configured in Jenkins
+                    sh 'sonar-scanner -Dsonar.projectKey=oraculoicms -Dsonar.sources=. ' // Adjust based on your project structure
         }
       }
     }
