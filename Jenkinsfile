@@ -47,32 +47,30 @@ pipeline {
 
 	stage('Migrate (tests)') {
 	  steps {
-		sh '''
+		sh """
 		  docker run --rm \
 			--network ${COMPOSE_PROJECT_NAME}_default \
 			-e FLASK_APP=oraculoicms_app.wsgi \
+			-e FLASK_ENV=testing \
 			-e DISABLE_SHEETS=1 \
-        	-e DISABLE_SCHEDULER=1 \
+			-e DISABLE_SCHEDULER=1 \
 			-e SQLALCHEMY_DATABASE_URI=${TEST_DB_URL} \
-        	-e DATABASE_URL=${TEST_DB_URL}
+			-e DATABASE_URL=${TEST_DB_URL} \
 			-w /app \
-			${IMAGE} sh -lc '
-			  set -e
-			  echo "FLASK_ENV=$FLASK_ENV"
-			  echo "SQLALCHEMY_DATABASE_URI=$SQLALCHEMY_DATABASE_URI"
-			  # Se não houver pasta migrations, inicializa Alembic
-			  if [ ! -d "migrations" ]; then
+			${IMAGE} sh -lc 'set -e
+			  echo "[migrate] FLASK_ENV=\$FLASK_ENV"
+			  echo "[migrate] SQLALCHEMY_DATABASE_URI=\$SQLALCHEMY_DATABASE_URI"
+			  if [ ! -d migrations ]; then
 				echo "[migrate] migrations/ não existe — executando flask db init"
 				flask db init
 			  fi
-			  # Tenta atualizar; se não houver scripts ainda, cria 1ª revisão e sobe
 			  if ! flask db upgrade; then
 				echo "[migrate] Sem revisões — gerando migração inicial"
 				flask db migrate -m "init"
 				flask db upgrade || flask init-db
 			  fi
 			'
-		'''
+		"""
 	  }
 	}
 
