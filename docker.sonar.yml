@@ -1,38 +1,64 @@
 services:
+  db:
+    image: postgres:15-alpine
+    container_name: sonarqube-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sonarqube
+      POSTGRES_PASSWORD: sonarqube
+      POSTGRES_DB: sonarqube
+      TZ: America/Manaus
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5431:5432"   # <- expõe no host a porta 5431
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonarqube -d sonarqube"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - sonarnet
+
   sonarqube:
     image: sonarqube:lts-community
+    container_name: sonarqube
     depends_on:
-      - sonar_db
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    sysctls:
+      vm.max_map_count: 262144
+      fs.file-max: 131072
+    ulimits:
+      nofile:
+        soft: 131072
+        hard: 131072
+      nproc: 8192
     environment:
-      SONAR_JDBC_URL: jdbc:postgresql://sonar_db:5431/sonar
-      SONAR_JDBC_USERNAME: sonar
-      SONAR_JDBC_PASSWORD: sonar
+      SONAR_JDBC_URL: jdbc:postgresql://db:5432/sonarqube
+      SONAR_JDBC_USERNAME: sonarqube
+      SONAR_JDBC_PASSWORD: sonarqube
+      TZ: America/Manaus
     ports:
-      - "9001:9000"
+      - "9000:9000"
     volumes:
-      - sonarqube_conf:/opt/sonarqube/conf
       - sonarqube_data:/opt/sonarqube/data
       - sonarqube_extensions:/opt/sonarqube/extensions
       - sonarqube_logs:/opt/sonarqube/logs
-      - sonarqube_temp:/opt/sonarqube/temp
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/api/system/health | grep -q 'GREEN'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    networks:
+      - sonarnet
 
-  sonar_db:
-    image: postgres:13
-    ports:
-      - "5431:5432"
-    environment:
-      POSTGRES_USER: sonar
-      POSTGRES_PASSWORD: sonar
-      POSTGRES_DB: sonar
-    volumes:
-      - sonar_db:/var/lib/postgresql
-      - sonar_db_data:/var/lib/postgresql/data
+networks:
+  sonarnet:
 
 volumes:
-  sonarqube_conf:
+  postgres_data:
   sonarqube_data:
   sonarqube_extensions:
   sonarqube_logs:
-  sonarqube_temp:
-  sonar_db:
-  sonar_db_data:

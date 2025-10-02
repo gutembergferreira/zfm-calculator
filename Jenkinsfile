@@ -7,6 +7,7 @@ pipeline {
     COMPOSE_PRD  = "docker-compose.prod.yml"
     TEST_DB_URL  = "postgresql+psycopg://postgres:postgres@db:5432/oraculoicms_test"
     COMPOSE_PROJECT_NAME= "oraculoicms"
+
   }
 
   stages {
@@ -114,7 +115,9 @@ pipeline {
           sh '''
             docker run --rm -v $PWD:/usr/src sonarsource/sonar-scanner-cli \
               -Dsonar.projectBaseDir=/usr/src \
-              -Dsonar.login=$SONAR_AUTH_TOKEN || true
+              -Dsonar.host.url=http://10.0.0.200:9001 \
+              -Dsonar.projectKey=oraculoicms \
+              -Dsonar.login=sqp_72db57058dcfe7460cc77b6494662159def5bb01 || true
           '''
         }
       }
