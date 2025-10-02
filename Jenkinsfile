@@ -51,6 +51,8 @@ pipeline {
 		  docker run --rm \
 			--network ${COMPOSE_PROJECT_NAME}_default \
 			-e FLASK_APP=oraculoicms_app.wsgi \
+			-e DISABLE_SHEETS=1 \
+        	-e DISABLE_SCHEDULER=1 \
 			-e SQLALCHEMY_DATABASE_URI=${TEST_DB_URL} \
 			-w /app \
 			${IMAGE} sh -lc "flask db upgrade || flask init-db"
@@ -65,6 +67,8 @@ pipeline {
 			--network ${COMPOSE_PROJECT_NAME}_default \
 			-e FLASK_APP=oraculoicms_app.wsgi \
 			-e SQLALCHEMY_DATABASE_URI=${TEST_DB_URL} \
+			-e DISABLE_SHEETS=1 \
+       		-e DISABLE_SCHEDULER=1 \
 			-v $PWD:/workspace -w /workspace \
 			${IMAGE} sh -lc "pytest -q --maxfail=1 --disable-warnings \
 			  --cov=oraculoicms_app --cov-report=xml:coverage.xml \

@@ -2,11 +2,28 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 from flask import current_app
-from sheets import SheetClient
+from sheets import SheetClient, SheetMisconfig
 import os
 
 
 def init_sheets(app):
+    # Em CI/testes ou quando explicitamente desabilitado, não inicializa Sheets
+    if app.config.get("TESTING") or os.getenv("DISABLE_SHEETS") == "1":
+        app.logger.info("Sheets desabilitado (TESTING/CI).")
+        app.extensions["sheet_client"] = None
+        app.extensions["matrices"] = {}
+        return
+    try:
+        client = SheetClient()
+        matrices = client.get_matrices()
+        app.extensions["sheet_client"] = client
+        app.extensions["matrices"] = matrices
+    except SheetMisconfig as e:
+    # Em produção você pode querer falhar; mas em dev/CI ignoramos para não travar migrações/tests
+        app.logger.warning(f"Sheets não configurado corretamente: {e}. Continuando sem Sheets.")
+        app.extensions["sheet_client"] = None
+        app.extensions["matrices"] = {}
+
     # NÃO inicializa Sheets em testes ou quando pedirmos explicitamente
     if getattr(app, "testing", False) or os.getenv("SKIP_SHEETS") == "1":
         app.extensions["sheet_client"] = None

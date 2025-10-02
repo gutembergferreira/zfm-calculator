@@ -55,7 +55,7 @@ def create_app(config_object: type[Config] = Config) -> Flask:
     register_cli(app)
 
     # Scheduler (ex.: dia 1 às 03:00 — atualizador AM)
-    if app.config.get("ENABLE_SCHEDULER", False):
+    if not app.config.get("TESTING") and os.getenv("DISABLE_SCHEDULER") != "1":
         if not scheduler.running:
             scheduler.start()
 
