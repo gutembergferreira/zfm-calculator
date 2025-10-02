@@ -1,50 +1,65 @@
-# zfm_app/services/sheets_service.py
-# -*- coding: utf-8 -*-
+# oraculoicms_app/services/sheets_service.py
 from __future__ import annotations
-from flask import current_app
-from sheets import SheetClient, SheetMisconfig
 import os
-
+from flask import current_app
+from sheets import SheetMisconfig  # tipo da exceção do teu package
 
 def init_sheets(app):
-    # Em CI/testes ou quando explicitamente desabilitado, não inicializa Sheets
+    """
+    Inicializa o cliente de Google Sheets (quando configurado).
+    Em TESTING/CI ou se flags de skip estiverem setadas, não inicializa.
+    Em misconfig (SheetMisconfig), NÃO levanta erro — apenas loga e segue sem Sheets.
+    """
+    # Inicializa chaves para evitar KeyError em qualquer branch
+    app.extensions.setdefault("sheet_client", None)
+    app.extensions.setdefault("matrices", {})
+    app.extensions.setdefault("worksheets", [])
+
+    # 1) Desabilitado por TESTING/CI
     if app.config.get("TESTING") or os.getenv("DISABLE_SHEETS") == "1":
         app.logger.info("Sheets desabilitado (TESTING/CI).")
-        app.extensions["sheet_client"] = None
-        app.extensions["matrices"] = {}
         return
+
+    # 2) Desabilitado explicitamente
+    if getattr(app, "testing", False) or os.getenv("SKIP_SHEETS") == "1":
+        return
+
+    # 3) Tenta inicializar de fato
     try:
+        from sheets import SheetClient
         client = SheetClient()
-        matrices = client.get_matrices()
+        # matrices(): alguns clients retornam dict; se não houver, cai para {}
+        matrices = getattr(client, "matrices", lambda: {})()
+        worksheets = getattr(client, "worksheets", [])
+
         app.extensions["sheet_client"] = client
-        app.extensions["matrices"] = matrices
+        app.extensions["matrices"] = matrices if isinstance(matrices, dict) else {}
+        app.extensions["worksheets"] = worksheets
+        return
     except SheetMisconfig as e:
-    # Em produção você pode querer falhar; mas em dev/CI ignoramos para não travar migrações/tests
+        # Em misconfig, não quebrar a app/testes: apenas logar e seguir sem client.
         app.logger.warning(f"Sheets não configurado corretamente: {e}. Continuando sem Sheets.")
         app.extensions["sheet_client"] = None
         app.extensions["matrices"] = {}
-
-    # NÃO inicializa Sheets em testes ou quando pedirmos explicitamente
-    if getattr(app, "testing", False) or os.getenv("SKIP_SHEETS") == "1":
-        app.extensions["sheet_client"] = None
         app.extensions["worksheets"] = []
         return
 
-    from sheets import SheetClient  # seu cliente real
-    client = SheetClient()
-    app.extensions["sheet_client"] = client
-    # se você armazenava titles/abas:
-    app.extensions["worksheets"] = getattr(client, "worksheets", [])
 
 def get_sheet_client():
-    return current_app.extensions["sheet_client"]
+    # mais robusto se a extensão não existir em algum contexto
+    return current_app.extensions.get("sheet_client")
+
 
 def get_matrices():
-    return current_app.extensions["matrices"]
+    return current_app.extensions.get("matrices", {})
+
 
 def reload_matrices():
     """Recarrega matrices no app.extensions (após updater)."""
     sc = get_sheet_client()
-    matrices = sc.matrices()
-    current_app.extensions["matrices"] = matrices
-    return matrices
+    if sc is None:
+        current_app.extensions["matrices"] = {}
+        return {}
+    matrices = getattr(sc, "matrices", lambda: {})()
+    current_app.extensions["matrices"] = matrices if isinstance(matrices, dict) else {}
+    return current_app.extensions["matrices"]

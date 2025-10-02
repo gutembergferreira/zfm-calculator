@@ -53,11 +53,10 @@ class TestingConfig(Config):
     TESTING = True
     FLASK_ENV = "testing"
     FLASK_DEBUG = "0"
-    # Banco de testes (CI). O Jenkins injeta essa variável nos containers,
-    # mas deixamos um default seguro local:
+    # Força SQLite em testes, a menos que o ambiente já tenha sido definido
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "SQLALCHEMY_DATABASE_URI",
-        "postgresql+psycopg2://postgres:postgres@localhost:5432/oraculoicms_test"
+        f"sqlite:///{os.path.join(BASE_DIR, 'test.sqlite')}"
     )
 
 class StagingConfig(Config):

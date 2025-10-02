@@ -1,6 +1,41 @@
 # tests/test_billing.py
 import pytest
 
+@pytest.fixture
+def fake_stripe(monkeypatch):
+    try:
+        import stripe
+    except Exception:
+        class _Obj:
+            def __init__(self, url): self.url = url
+        # cria um módulo fake mínimo se stripe não estiver instalado
+        class _Checkout:
+            class Session:
+                @staticmethod
+                def create(**k): return _Obj("https://stripe/checkout/test")
+        class _BillingPortal:
+            class Session:
+                @staticmethod
+                def create(**k): return _Obj("https://stripe/portal/test")
+        class _Stripe:
+            checkout = _Checkout()
+            billing_portal = _BillingPortal()
+        import sys
+        sys.modules['stripe'] = _Stripe()
+        yield
+        return
+
+    class _Obj:
+        def __init__(self, url): self.url = url
+
+    monkeypatch.setattr(stripe.checkout.Session, "create",
+                        staticmethod(lambda **k: _Obj("https://stripe/checkout/test")),
+                        raising=False)
+    monkeypatch.setattr(stripe.billing_portal.Session, "create",
+                        staticmethod(lambda **k: _Obj("https://stripe/portal/test")),
+                        raising=False)
+    yield
+
 @pytest.mark.usefixtures("fake_stripe")
 def test_checkout_choose_renders(logged_client_user, plan_basic):
     r = logged_client_user.get("/billing/checkout")

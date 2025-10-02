@@ -278,3 +278,253 @@ def test_upsert_erro_sem_user_file_e_sem_match_por_chave(db_session, user_normal
             db=db, NFEXML=NFEXML, NFESummary=TestNFESummary, UserFile=TestUserFile,
             user_id=user_normal.id, xml_bytes=b"<nfe/>", user_file_id=None
         )
+# tests/test_nfexml_parser.py
+import textwrap
+from decimal import Decimal
+import pytest
+
+# Importe a classe/funções do seu módulo
+# ajuste o caminho conforme a localização real do arquivo
+from xml_parser import NFEXML, D, q2
+
+
+# ---------- Helpers ----------
+NS = "http://www.portalfiscal.inf.br/nfe"
+
+def _wrap_nfe(inner_xml: str, with_proc: bool = False, add_id=True) -> bytes:
+    """Monta um XML mínimo de NFe (ou nfeProc) com namespace oficial."""
+    root_open = f'<NFe xmlns="{NS}"><infNFe Id="NFe123" versao="4.00">' if add_id else f'<NFe xmlns="{NS}"><infNFe versao="4.00">'
+    root_close = "</infNFe></NFe>"
+    if with_proc:
+        return textwrap.dedent(f"""\
+        <nfeProc xmlns="{NS}">
+          {root_open}
+          {inner_xml}
+          {root_close}
+        </nfeProc>
+        """).encode("utf-8")
+    else:
+        return textwrap.dedent(f"""\
+        {root_open}
+        {inner_xml}
+        {root_close}
+        """).encode("utf-8")
+
+
+# ---------- Testes de utilitários numéricos ----------
+def test_D_parsing_and_q2_rounding():
+    assert D("10") == Decimal("10")
+    assert D("10,5") == Decimal("10.5")
+    assert D("1.234,56") == Decimal("1234.56")
+    assert D(None) == Decimal("0")
+    assert D("invalido") == Decimal("0")
+    assert q2("1,005") == Decimal("1.01")          # arredondamento HALF_UP
+    assert q2("1,004") == Decimal("1.00")
+    # idempotência com Decimal
+    assert D(Decimal("2.3")) == Decimal("2.3")
+
+
+# ---------- Testes de header() ----------
+def test_header_with_namespace_and_dhEmi():
+    inner = f"""
+      <ide xmlns="{NS}">
+        <nNF>987</nNF>
+        <serie>1</serie>
+        <mod>55</mod>
+        <natOp>VENDA</natOp>
+        <dhEmi>2025-09-21T09:00:00-03:00</dhEmi>
+      </ide>
+      <emit xmlns="{NS}">
+        <xNome>EMITENTE LTDA</xNome>
+        <CNPJ>11111111000191</CNPJ>
+        <IE>ISENTO</IE>
+        <enderEmit>
+          <xLgr>Rua A</xLgr><nro>100</nro><xBairro>Centro</xBairro>
+          <xMun>Manaus</xMun><UF>AM</UF><CEP>69000-000</CEP>
+        </enderEmit>
+      </emit>
+      <dest xmlns="{NS}">
+        <xNome>CLIENTE SA</xNome>
+        <CNPJ>22222222000172</CNPJ>
+        <IE>123</IE>
+        <enderDest>
+          <xLgr>Av B</xLgr><nro>200</nro><xBairro>Adrianópolis</xBairro>
+          <xMun>Manaus</xMun><UF>AM</UF><CEP>69001-000</CEP>
+        </enderDest>
+      </dest>
+    """
+    xml = _wrap_nfe(inner, with_proc=True, add_id=True)
+    nf = NFEXML(xml)
+    h = nf.header()
+
+    assert h["chave"] == "123"
+    assert h["numero"] == "987"
+    assert h["serie"] == "1"
+    assert h["modelo"] == "55"
+    assert h["natOp"] == "VENDA"
+    assert h["dhEmi"].startswith("2025-09-21")
+
+    assert h["emitente_nome"] == "EMITENTE LTDA"
+    assert h["emitente_cnpj"] == "11111111000191"
+    assert h["emitente_endereco"] == "Rua A, 100, Centro"
+    assert h["emitente_municipio"] == "Manaus"
+    assert h["emitente_uf"] == "AM"
+
+    assert h["dest_nome"] == "CLIENTE SA"
+    assert h["dest_cnpj"] == "22222222000172"
+    assert h["dest_endereco"] == "Av B, 200, Adrianópolis"
+    assert h["dest_uf"] == "AM"
+
+    assert h["uf_origem"] == "AM" and h["uf_destino"] == "AM"
+
+
+def test_header_uses_dEmi_when_dhEmi_missing():
+    inner = f"""
+      <ide xmlns="{NS}">
+        <nNF>1</nNF><serie>1</serie><mod>55</mod><natOp>VENDA</natOp>
+        <dEmi>2025-05-01</dEmi>
+      </ide>
+    """
+    xml = _wrap_nfe(inner, with_proc=False, add_id=False)
+    nf = NFEXML(xml)
+    h = nf.header()
+    assert h["chave"] == ""            # sem Id
+    assert h["dhEmi"] == "2025-05-01"  # caiu no fallback dEmi
+
+
+# ---------- Testes de totais() ----------
+def test_totais_reads_icmstot():
+    inner = f"""
+      <total xmlns="{NS}">
+        <ICMSTot>
+          <vProd>1000,00</vProd><vFrete>50,00</vFrete><vIPI>10,00</vIPI>
+          <vDesc>5,00</vDesc><vOutro>2,00</vOutro><vICMSDeson>1,00</vICMSDeson>
+          <vICMS>90,50</vICMS><vST>0,00</vST><vNF>1057,50</vNF>
+        </ICMSTot>
+      </total>
+    """
+    xml = _wrap_nfe(inner)
+    nf = NFEXML(xml)
+    t = nf.totais()
+    assert t["vProd"] == pytest.approx(1000.00)
+    assert t["vFrete"] == pytest.approx(50.00)
+    assert t["vIPI"] == pytest.approx(10.00)
+    assert t["vNF"] == pytest.approx(1057.50)
+
+
+# ---------- Testes de itens() ----------
+def test_itens_with_item_frete_and_taxes():
+    inner = f"""
+      <det xmlns="{NS}" nItem="1">
+        <prod>
+          <cProd>A1</cProd><xProd>Produto A</xProd><NCM>1234</NCM><CFOP>5102</CFOP>
+          <uCom>UN</uCom><uTrib>UN</uTrib><cEAN>SEM GTIN</cEAN><cEANTrib></cEANTrib>
+          <qCom>2,0000</qCom><vUnCom>10,00</vUnCom><vFrete>3,00</vFrete>
+        </prod>
+        <imposto>
+          <ICMS><ICMS00><CST>00</CST><vICMSDeson>0,50</vICMSDeson></ICMS00></ICMS>
+          <IPI><IPITrib><vIPI>1,00</vIPI></IPITrib></IPI>
+        </imposto>
+      </det>
+      <total xmlns="{NS}">
+        <ICMSTot><vProd>20,00</vProd><vFrete>10,00</vFrete><vOutro>2,00</vOutro></ICMSTot>
+      </total>
+    """
+    xml = _wrap_nfe(inner)
+    nf = NFEXML(xml)
+    itens = nf.itens()
+    assert len(itens) == 1
+    it = itens[0]
+    assert it.cProd == "A1" and it.xProd == "Produto A"
+    assert it.qCom == Decimal("2.00")
+    assert it.vUnCom == Decimal("10.00")
+    assert it.vProd == Decimal("20.00")
+    # Como item possui vFrete, usa o do item (3,00), arredondado:
+    assert it.vFrete == Decimal("3.00")
+    # vOutro rateado: total 2,00 todo para o único item
+    assert it.vOutro == Decimal("2.00")
+    # IPI e ICMS desonerado:
+    assert it.vIPI == Decimal("1.00")
+    assert it.vICMSDeson == Decimal("0.50")
+
+
+def test_itens_rateio_frete_sem_frete_item():
+    inner = f"""
+      <det xmlns="{NS}" nItem="1">
+        <prod>
+          <cProd>A1</cProd><xProd>Prod A</xProd><NCM>1234</NCM><CFOP>5102</CFOP>
+          <qCom>1</qCom><vUnCom>100,00</vUnCom>
+        </prod>
+        <imposto><ICMS><ICMS00><CST>00</CST></ICMS00></ICMS></imposto>
+      </det>
+      <det xmlns="{NS}" nItem="2">
+        <prod>
+          <cProd>B2</cProd><xProd>Prod B</xProd><NCM>1234</NCM><CFOP>5102</CFOP>
+          <qCom>3</qCom><vUnCom>50,00</vUnCom>
+        </prod>
+        <imposto><ICMS><ICMS00><CST>00</CST></ICMS00></ICMS></imposto>
+      </det>
+      <total xmlns="{NS}">
+        <ICMSTot><vProd>250,00</vProd><vFrete>25,00</vFrete><vOutro>0,00</vOutro></ICMSTot>
+      </total>
+    """
+    xml = _wrap_nfe(inner)
+    nf = NFEXML(xml)
+    itens = nf.itens()
+    assert len(itens) == 2
+
+    # vProd: item1=100; item2=150
+    it1, it2 = itens
+    assert it1.vProd == Decimal("100.00")
+    assert it2.vProd == Decimal("150.00")
+
+    # rateio do frete 25 proporcional a vProd:
+    # it1: 25 * (100/250) = 10,00
+    # it2: 25 * (150/250) = 15,00
+    assert it1.vFrete == Decimal("10.00")
+    assert it2.vFrete == Decimal("15.00")
+
+
+# ---------- Transporte, cobrança, duplicatas, inf_adic ----------
+def test_transporte_cobranca_duplicatas_and_inf_adic():
+    inner = f"""
+      <transp xmlns="{NS}">
+        <modFrete>1</modFrete>
+        <transporta>
+          <xNome>TRANSP X</xNome><CNPJ>33333333000100</CNPJ><UF>AM</UF>
+        </transporta>
+        <vol><qVol>5</qVol><esp>CAIXA</esp><marca>ACME</marca><nVol>1</nVol><pesoL>10</pesoL><pesoB>11</pesoB></vol>
+      </transp>
+      <cobr xmlns="{NS}">
+        <fat><nFat>F123</nFat><vOrig>100,00</vOrig><vDesc>5,00</vDesc><vLiq>95,00</vLiq></fat>
+        <dup><nDup>001</nDup><dVenc>2025-10-30</dVenc><vDup>50,00</vDup></dup>
+        <dup><nDup>002</nDup><dVenc>2025-11-30</dVenc><vDup>45,00</vDup></dup>
+      </cobr>
+      <infAdic xmlns="{NS}">
+        <infCpl>Observações adicionais do documento.</infCpl>
+      </infAdic>
+    """
+    xml = _wrap_nfe(inner)
+    nf = NFEXML(xml)
+
+    tr = nf.transporte()
+    assert tr["modFrete"] == "1"
+    assert tr["transportadora_nome"] == "TRANSP X"
+    assert tr["transportadora_cnpj"] == "33333333000100"
+    assert tr["qVol"] == "5"
+    assert tr["esp"] == "CAIXA"
+    assert tr["marca"] == "ACME"
+
+    cb = nf.cobranca()
+    assert cb["nFat"] == "F123"
+    assert cb["vOrig"] == pytest.approx(100.00)
+    assert cb["vDesc"] == pytest.approx(5.00)
+    assert cb["vLiq"] == pytest.approx(95.00)
+
+    dups = nf.duplicatas()
+    assert len(dups) == 2
+    assert dups[0]["nDup"] == "001" and dups[1]["nDup"] == "002"
+    assert dups[0]["vDup"] == pytest.approx(50.00)
+
+    ia = nf.inf_adic()
+    assert "Observações adicionais" in ia

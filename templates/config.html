@@ -77,7 +77,7 @@
                 {% for r in sources %}
                   <tr>
                     {% for c in columns %}
-                      <td><input class="form-control form-control-sm" name="row-{{ loop.parent.index0 }}-{{ c }}" value="{{ r[c] if r[c] is not none else '' }}"></td>
+                      <td><input class="form-control form-control-sm" name="row-{{ loop.index0 }}-{{ c }}" value="{{ r[c] if r[c] is not none else '' }}"></td>
                     {% endfor %}
                   </tr>
                 {% endfor %}
