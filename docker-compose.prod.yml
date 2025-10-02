@@ -27,6 +27,7 @@ services:
       retries: 20
     volumes:
       - pg_prod:/var/lib/postgresql/data
+      - ./db/init/production:/docker-entrypoint-initdb.d:ro
     restart: unless-stopped
 
 volumes:
