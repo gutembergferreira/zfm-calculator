@@ -10,6 +10,20 @@ from datetime import datetime
 
 import pytest
 from sqlalchemy.orm import DeclarativeMeta
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+
+def _set_sqlite_pragmas(dbapi_conn, _conn_record):
+    # só funciona em sqlite3
+    try:
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.close()
+    except Exception:
+        # silencioso em sqlite corrompido; mas não deve ser chamado em outros backends
+        pass
+
 
 # --------------------------------------------------------------------------------------
 # Limpeza de arquivos de DB residuais (ex.: test.sqlite) solicitada pelo usuário
@@ -102,7 +116,9 @@ def app():
 
     with app.app_context():
         try:
-            event.listen(db.engine, "connect", _set_sqlite_pragmas)
+            backend = db.engine.url.get_backend_name()  # 'sqlite', 'postgresql', etc.
+            if backend == "sqlite":
+                event.listen(db.engine, "connect", _set_sqlite_pragmas)
         except Exception:
             pass
 

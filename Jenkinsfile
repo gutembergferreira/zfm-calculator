@@ -80,8 +80,6 @@ pipeline {
 		  docker run --rm \
 			--network ${COMPOSE_PROJECT_NAME}_default \
 			-e FLASK_APP=oraculoicms_app.wsgi \
-			-e SQLALCHEMY_DATABASE_URI=${TEST_DB_URL} \
-        	-e DATABASE_URL=${TEST_DB_URL} \
 			-e DISABLE_SHEETS=1 \
        		-e DISABLE_SCHEDULER=1 \
 			-v $PWD:/workspace -w /workspace \
