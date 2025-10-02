@@ -112,7 +112,6 @@ pipeline {
     stage('SonarQube Analysis') {
       steps {
 		  withSonarQubeEnv('SonarQube MG'){
-			  def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
 	          sh '/opt/sonar-scanner/bin/sonar-scanner -Dsonar.projectKey=oraculoicms -Dsonar.sources=. ' // Adjust based on your project structure
         }
       }
