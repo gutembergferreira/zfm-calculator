@@ -6,6 +6,7 @@ pipeline {
     COMPOSE_STG  = "docker-compose.staging.yml"
     COMPOSE_PRD  = "docker-compose.prod.yml"
     TEST_DB_URL  = "postgresql+psycopg://postgres:postgres@db:5432/oraculoicms_test"
+    COMPOSE_PROJECT_NAME= "oraculoicms"
   }
 
   stages {
@@ -48,7 +49,7 @@ pipeline {
       steps {
         sh '''
           docker run --rm \
-            --network $(basename "$PWD")_default \
+            --network ${COMPOSE_PROJECT_NAME}_default \
             -e SQLALCHEMY_DATABASE_URI=${TEST_DB_URL} \
             ${IMAGE} sh -lc "flask db upgrade || flask init-db"
         '''
@@ -59,7 +60,7 @@ pipeline {
       steps {
         sh '''
           docker run --rm \
-            --network $(basename "$PWD")_default \
+            --network ${COMPOSE_PROJECT_NAME}_default \
             -e SQLALCHEMY_DATABASE_URI=${TEST_DB_URL} \
             -v $PWD:/workspace -w /workspace \
             ${IMAGE} sh -lc "pytest -q --maxfail=1 --disable-warnings \
