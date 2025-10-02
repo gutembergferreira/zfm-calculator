@@ -89,10 +89,10 @@ pipeline {
 		'''
 	  }
 	  post {
-		always {
-		  junit 'report-junit.xml'
-		  publishCoverage adapters: [coberturaAdapter('coverage.xml')]
-		}
+		  always {
+			junit 'report-junit.xml'
+			cobertura coberturaReportFile: 'coverage.xml'
+		  }
 	  }
 	}
 
