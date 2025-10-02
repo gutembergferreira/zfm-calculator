@@ -88,12 +88,15 @@ pipeline {
 			  --junitxml=report-junit.xml"
 		'''
 	  }
-	  post {
-		  always {
-			junit 'report-junit.xml'
-			cobertura coberturaReportFile: 'coverage.xml'
-		  }
+	post {
+	  always {
+		junit 'report-junit.xml'
+		publishCoverage(
+		  adapters: [coberturaAdapter('coverage.xml')],
+		  sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
+		)
 	  }
+	}
 	}
 
     stage('Deploy STAGING (banco 2) — não bloqueia por QG') {
