@@ -1,4 +1,5 @@
 FROM python:3.12-slim
+ENV FLASK_APP=oraculoicms_app.wsgi:create_app
 WORKDIR /app
 
 COPY requirements.txt .
