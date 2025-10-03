@@ -117,7 +117,7 @@ pipeline {
 				  -Dsonar.projectKey=oraculoicms \
 				  -Dsonar.sources=. \
 				  -Dsonar.tests=tests \
-				  -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/*.yaml,Jenkinsfile, **/*.env, **/*.env.*, **/*.md, **/*.json, **/*.ini, **/*.txt, **/*.properties  \
+				  -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/*.yaml,Jenkinsfile \
 				  -Dsonar.python.version=3.12 \
 				  -Dsonar.python.coverage.reportPaths=coverage-reports/coverage.xml \
 				  -Dsonar.python.xunit.reportPath=report-junit.xml \
