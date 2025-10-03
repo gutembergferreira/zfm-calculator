@@ -1,8 +1,12 @@
 [run]
 branch = True
+
+[paths]
 source =
     oraculoicms_app
     xml_parser
+    /workspace/oraculoicms_app
+    /var/lib/jenkins/workspace/Oraculo_ICMS_env_TEST/oraculoicms_app
 omit =
     */migrations/*
     */wsgi.py
@@ -15,6 +19,9 @@ omit =
     */site-packages/*
 
 [report]
+omit =
+    **/migrations/**
+    **/tests/**
 show_missing = True
 skip_covered = False
 precision = 1

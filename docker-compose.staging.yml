@@ -13,7 +13,7 @@ services:
       db-staging:
         condition: service_healthy
     command: >
-      sh -c "flask db upgrade || flask init-db && gunicorn -w 4 -k gevent -b 0.0.0.0:${APP_PORT:-8091} oraculoicms_app.wsgi:app"
+      sh -c "flask db upgrade || flask init-db && gunicorn -w 4 -k gevent -b 0.0.0.0:${APP_PORT:-8001} oraculoicms_app.wsgi:app"
 
   db-staging:
     image: postgres:16
