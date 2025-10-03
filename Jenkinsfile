@@ -85,7 +85,7 @@ pipeline {
        		-e DISABLE_SCHEDULER=1 \
 			-v $PWD:/workspace -w /workspace \
 			${IMAGE} sh -lc "pytest -q --maxfail=1 --disable-warnings \
-			  --cov=oraculoicms_app --cov-report=xml:coverage.xml \
+			  --cov=oraculoicms_app --cov-report=xml:coverage-reports/coverage.xml \
 			  --junitxml=report-junit.xml"
 		'''
 	  }
@@ -115,15 +115,15 @@ pipeline {
 			  sh '''
 				  /opt/sonar-scanner/bin/sonar-scanner \
 				  -Dsonar.projectKey=oraculoicms \
-				  -Dsonar.language=py \
 				  -Dsonar.sources=. \
 				  -Dsonar.tests=tests \
-				  -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/** \
+				  -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/*.yaml,Jenkinsfile, **/*.env, **/*.env.*, **/*.md, **/*.json, **/*.ini, **/*.txt, **/*.properties,  \
 				  -Dsonar.python.version=3.12 \
-				  -Dsonar.python.coverage.reportPath=coverage.xml \
+				  -Dsonar.python.coverage.reportPaths=coverage-reports/coverage.xml \
+				  -Dsonar.python.xunit.reportPath=report-junit.xml \
 				  -Dsonar.verbose=true
 			  '''
-				// Adjust based on your project structure -Dsonar.python.xunit.reportPath=report-junit.xml
+				// Adjust based on your project structure
         }
       }
     }
