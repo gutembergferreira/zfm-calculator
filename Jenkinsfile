@@ -112,7 +112,17 @@ pipeline {
     stage('SonarQube Analysis') {
       steps {
 		  withSonarQubeEnv('SonarQube MG'){
-	          sh '/opt/sonar-scanner/bin/sonar-scanner -Dsonar.projectKey=oraculoicms -Dsonar.sources=. ' // Adjust based on your project structure
+			  sh '''
+				  /opt/sonar-scanner/bin/sonar-scanner \
+				  -Dsonar.projectKey=oraculoicms \
+				  -Dsonar.sources=. \
+				  -Dsonar.tests=tests \
+				  -Dsonar.exclusions=**/migrations/**,**/__pycache__/** \
+				  -Dsonar.python.version=3.12 \
+				  -Dsonar.python.coverage.reportPaths=coverage.xml \
+				  -Dsonar.python.xunit.reportPath=report-junit.xml
+			  '''
+				// Adjust based on your project structure
         }
       }
     }
