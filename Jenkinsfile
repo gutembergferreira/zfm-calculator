@@ -120,7 +120,7 @@ pipeline {
 				  -Dsonar.tests=tests \
 				  -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/** \
 				  -Dsonar.python.version=3.12 \
-				  -Dsonar.python.coverage.reportPaths=coverage.xml \
+				  -Dsonar.python.coverage.reportPath=coverage.xml \
 				  -Dsonar.verbose=true
 			  '''
 				// Adjust based on your project structure -Dsonar.python.xunit.reportPath=report-junit.xml
