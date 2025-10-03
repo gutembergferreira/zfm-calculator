@@ -2,7 +2,7 @@
 from __future__ import annotations
 import os
 from flask import current_app
-from sheets import SheetMisconfig  # tipo da exceção do teu package
+from sheets import SheetMisconfig, SheetClient  # tipo da exceção do teu package
 
 def init_sheets(app):
     """
