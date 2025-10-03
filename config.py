@@ -64,7 +64,7 @@ class StagingConfig(Config):
     FLASK_DEBUG = "0"
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "SQLALCHEMY_DATABASE_URI",
-        "postgresql+psycopg://postgres:postgres@db:5432/oraculoicms_staging"
+        "postgresql+psycopg://postgres:postgres@db-staging:5432/oraculoicms_staging"
     )
 
 class ProductionConfig(Config):

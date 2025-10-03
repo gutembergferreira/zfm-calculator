@@ -135,14 +135,8 @@ pipeline {
 
   post {
     success {
-      emailext subject: "✅ oraculoicms: Build ${BUILD_NUMBER} OK",
-               body: "Pipeline finalizada com sucesso.",
-               to: "${EMAIL_TO}"
     }
     failure {
-      emailext subject: "❌ oraculoicms: Build ${BUILD_NUMBER} falhou",
-               body: "Verifique o console do Jenkins.",
-               to: "${EMAIL_TO}"
     }
   }
 }
