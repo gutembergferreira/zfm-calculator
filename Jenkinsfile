@@ -1,5 +1,14 @@
 pipeline {
   agent any
+   parameters {
+		booleanParam(name: 'RUN_BUILD_IMAGE_DOCKER',   defaultValue: true,  description: 'Executa build de imagem no docker')
+		booleanParam(name: 'RUN_PYLINT',   defaultValue: true,  description: 'Executa analise pylint https://pylint.readthedocs.io/en/stable/')
+		booleanParam(name: 'RUN_BANDIT',   defaultValue: true,  description: 'Executa analise bandit https://bandit.readthedocs.io/en/latest/')
+		booleanParam(name: 'RUN_TESTS_UNIT',   defaultValue: true,  description: 'Executa testes unitários ')
+		booleanParam(name: 'RUN_SONAR',   defaultValue: true,  description: 'Envia análise ao SonarQube http://10.0.0.200:9001/dashboard?id=oraculoicms')
+		booleanParam(name: 'DEPLOY_STG',  defaultValue: true,  description: 'Faz deploy em STAGING')
+		booleanParam(name: 'DEPLOY_PRD',  defaultValue: false, description: 'Faz deploy em PRODUÇÃO')
+  }
   environment {
     IMAGE        = "oraculoicms:${env.BUILD_NUMBER}"
     COMPOSE_BASE = "docker-compose.yml"
@@ -14,9 +23,11 @@ pipeline {
     stage('Checkout'){ steps{ checkout scm } }
 
 	stage('Build image') {
-	  steps {
+		when { expression { params.RUN_BUILD_IMAGE_DOCKER } }
+		steps {
 		sh '''
-		  docker build \
+		  DOCKER_BUILDKIT=1 docker build \
+		  	--build-arg BUILDKIT_INLINE_CACHE=1 \
 			--build-arg BUILD_REV=${BUILD_NUMBER} \
 			--build-arg APP_HASH=$(git rev-parse --short HEAD) \
 			-t ${IMAGE} -f Dockerfile .
@@ -84,6 +95,7 @@ pipeline {
 
 
 	stage('Gerando Relatório de Análise Pylint') {
+	  when { expression { params.RUN_PYLINT } }
 	  steps {
 		sh '''
 		  docker run --rm \
@@ -99,6 +111,7 @@ pipeline {
 
 
 	stage('Gerando Relatório de Análise Bandit') {
+	  when { expression { params.RUN_BANDIT } }
 	  steps {
 		sh '''
 		  docker run --rm \
@@ -113,40 +126,39 @@ pipeline {
 	}
 
 
-stage('Unit tests') {
-  steps {
-    sh '''
-      docker run --rm \
-        --network ${COMPOSE_PROJECT_NAME}_default \
-        -e FLASK_APP=oraculoicms_app.wsgi:create_app \
-        -e DISABLE_SHEETS=1 \
-        -e DISABLE_SCHEDULER=1 \
-        -v $PWD:/workspace -w /workspace \
-        ${IMAGE} sh -lc '
-          set -e
-          coverage erase
-          coverage run -m pytest -q --maxfail=1 --disable-warnings
-          # gera XML respeitando o .coveragerc (relative_files + paths)
-          coverage xml -o coverage-reports/coverage.xml
-          # junit para o Jenkins
-          pytest -q --maxfail=1 --disable-warnings \
-            --junitxml=coverage-reports/pytest-report.xml
-        '
-    '''
-  }
-  post {
-    always {
-      junit 'coverage-reports/pytest-report.xml'
-      publishCoverage(
-        adapters: [coberturaAdapter('coverage-reports/coverage.xml')],
-        sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
-      )
-    }
-  }
-}
+	stage('Unit tests') {
+	  when { expression { params.RUN_TESTS_UNIT } }
+	  steps {
+		sh '''
+		  docker run --rm \
+			--network ${COMPOSE_PROJECT_NAME}_default \
+			-e FLASK_APP=oraculoicms_app.wsgi:create_app \
+			-e DISABLE_SHEETS=1 \
+			-e DISABLE_SCHEDULER=1 \
+			-v $PWD:/workspace -w /workspace \
+			${IMAGE} sh -lc '
+			  set -e
+			  coverage erase
+			  coverage run -m pytest -q --maxfail=1 --disable-warnings
+			  # gera XML respeitando o .coveragerc (relative_files + paths)
+			  coverage xml -o coverage-reports/coverage.xml
+			'
+		'''
+	  }
+	  post {
+		always {
+		  junit 'coverage-reports/pytest-report.xml'
+		  publishCoverage(
+			adapters: [coberturaAdapter('coverage-reports/coverage.xml')],
+			sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
+		  )
+		}
+	  }
+	}
 
 
     stage('Deploy STAGING (banco 2) — não bloqueia por QG') {
+	  when { expression { params.DEPLOY_STG } }
       steps {
         sh '''
           # usa .env.staging (oraculoicms_staging)
@@ -156,6 +168,7 @@ stage('Unit tests') {
     }
 
     stage('SonarQube Analysis') {
+	  when { expression { params.RUN_SONAR } }
       steps {
 		  withSonarQubeEnv('SonarQube MG'){
 			  sh '''
@@ -177,12 +190,14 @@ stage('Unit tests') {
     }
 
     stage('Quality Gate (obrigatório pra Produção)') {
+	  when { expression { params.RUN_DEPLOY_PRD } }
       steps {
         timeout(time: 10, unit: 'MINUTES') { waitForQualityGate abortPipeline: true }
       }
     }
 
     stage('Deploy PRODUÇÃO (banco 3)') {
+	  when { expression { params.RUN_DEPLOY_PRD } }
       steps {
         sh '''
           # usa .env.production (oraculoicms)

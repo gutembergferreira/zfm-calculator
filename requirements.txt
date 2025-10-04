@@ -25,3 +25,5 @@ factory_boy==3.3.0
 freezegun==1.5.1
 pylint==3.3.8
 bandit==1.8.6
+gunicorn==23.0.0
+gevent==25.9.1
