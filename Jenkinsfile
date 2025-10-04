@@ -93,7 +93,10 @@ pipeline {
 			-e DISABLE_SHEETS=1 \
 			-e DISABLE_SCHEDULER=1 \
 			-v $PWD:/workspace -w /workspace \
-			${IMAGE} sh -lc "pylint oraculoicms_app -f json > coverage-reports/pylint-report.json || true"
+			${IMAGE} sh -lc "pylint oraculoicms_app xml_parser \
+							  -f parseable \
+							  -r n \
+							  --output=coverage-reports/pylint-report.txt"
 		'''
 	  }
 	}
@@ -115,32 +118,39 @@ pipeline {
 	}
 
 
-	stage('Unit tests') {
-	  steps {
-		sh '''
-		  mkdir -p coverage-reports
-		  docker run --rm \
-			--network ${COMPOSE_PROJECT_NAME}_default \
-			-e FLASK_APP=oraculoicms_app.wsgi \
-			-e DISABLE_SHEETS=1 \
-			-e DISABLE_SCHEDULER=1 \
-			-v $PWD:/workspace -w /workspace \
-			${IMAGE} sh -lc "pytest -q --maxfail=1 --disable-warnings \
-			  --cov=oraculoicms_app --cov-config=.coveragerc \
-			  --cov-report=xml:coverage-reports/coverage.xml \
-			  --junitxml=coverage-reports/pytest-report.xml"
-		'''
-	  }
-	  post {
-		always {
-		  junit 'coverage-reports/pytest-report.xml'
-		  publishCoverage(
-			adapters: [coberturaAdapter('coverage-reports/coverage.xml')],
-			sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
-		  )
-		}
-	  }
-	}
+stage('Unit tests') {
+  steps {
+    sh '''
+      mkdir -p coverage-reports
+      docker run --rm \
+        --network ${COMPOSE_PROJECT_NAME}_default \
+        -e FLASK_APP=oraculoicms_app.wsgi:create_app \
+        -e DISABLE_SHEETS=1 \
+        -e DISABLE_SCHEDULER=1 \
+        -v $PWD:/workspace -w /workspace \
+        ${IMAGE} sh -lc '
+          set -e
+          coverage erase
+          coverage run -m pytest -q --maxfail=1 --disable-warnings
+          # gera XML respeitando o .coveragerc (relative_files + paths)
+          coverage xml -o coverage-reports/coverage.xml
+          # junit para o Jenkins
+          pytest -q --maxfail=1 --disable-warnings \
+            --junitxml=coverage-reports/pytest-report.xml
+        '
+    '''
+  }
+  post {
+    always {
+      junit 'coverage-reports/pytest-report.xml'
+      publishCoverage(
+        adapters: [coberturaAdapter('coverage-reports/coverage.xml')],
+        sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
+      )
+    }
+  }
+}
+
 
     stage('Deploy STAGING (banco 2) — não bloqueia por QG') {
       steps {
@@ -157,13 +167,13 @@ pipeline {
 			  sh '''
 				  /opt/sonar-scanner/bin/sonar-scanner \
 				  -Dsonar.projectKey=oraculoicms \
-				  -Dsonar.sources=oraculoicms_app \
+				  -Dsonar.sources=oraculoicms_app,xml_parser \
 				  -Dsonar.tests=tests \
-				  -Dsonar.exclusions=**/migrations/**,**/__pycache__/** \
+				  -Dsonar.exclusions=**/migrations/**,**/__pycache__/**,**/templates/**,**/static/** \
 				  -Dsonar.python.version=3.12 \
 				  -Dsonar.python.coverage.reportPaths=coverage-reports/coverage.xml \
 				  -Dsonar.python.xunit.reportPath=coverage-reports/pytest-report.xml \
-				  -Dsonar.python.pylint.reportPaths=coverage-reports/pylint-report.json \
+				  -Dsonar.python.pylint.reportPaths=coverage-reports/pylint-report.txt \
 				  -Dsonar.python.bandit.reportPaths=coverage-reports/bandit-report.json \
 				  -Dsonar.verbose=true
 			  '''
