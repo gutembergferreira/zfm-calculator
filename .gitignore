@@ -12,3 +12,5 @@ htmlcov
 .env.staging
 .env.production
 test.sqlite
+bandit-report.json
+pylint-report.txt
