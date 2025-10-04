@@ -2,7 +2,7 @@
 services:
   web-prod:
     build: .
-    image: oraculoicms:prod
+    image: ${IMAGE}
     env_file:
       - .env.production
     depends_on:

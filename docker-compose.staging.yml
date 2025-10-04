@@ -2,7 +2,7 @@
 services:
   web-staging:
     build: .
-    image: oraculoicms:staging
+    image: ${IMAGE}
     environment:
       FLASK_APP: oraculoicms_app.wsgi:create_app
     env_file:

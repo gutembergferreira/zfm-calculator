@@ -3,6 +3,8 @@ branch = True
 source =
     oraculoicms_app
     xml_parser
+
+[report]
 omit =
     */migrations/*
     */wsgi.py
@@ -14,7 +16,6 @@ omit =
     */.venv/*
     */site-packages/*
 
-[report]
 show_missing = True
 skip_covered = False
 precision = 1
