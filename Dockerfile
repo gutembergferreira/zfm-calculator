@@ -16,7 +16,7 @@ WORKDIR /app
 COPY requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip && \
-    pip install --no-warn-script-location -r /tmp/requirements.txt && \
+    pip install --no-warn-script-location -r /tmp/requirements.txt
 
 COPY . .
 ENV PORT=8090
