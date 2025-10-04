@@ -146,7 +146,7 @@ pipeline {
       steps {
         sh '''
           # usa .env.staging (oraculoicms_staging)
-          docker compose -f ${COMPOSE_BASE} -f ${COMPOSE_STG} up -d --force-recreate --no-deps web
+          docker compose -f ${COMPOSE_BASE} -f ${COMPOSE_STG} up -d --force-recreate --no-deps web-staging
         '''
       }
     }
