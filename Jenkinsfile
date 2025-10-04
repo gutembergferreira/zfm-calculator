@@ -13,9 +13,16 @@ pipeline {
   stages {
     stage('Checkout'){ steps{ checkout scm } }
 
-    stage('Build image') {
-      steps { sh 'docker build -t ${IMAGE} -f Dockerfile .' }
-    }
+	stage('Build image') {
+	  steps {
+		sh '''
+		  docker build \
+			--build-arg BUILD_REV=${BUILD_NUMBER} \
+			--build-arg APP_HASH=$(git rev-parse --short HEAD) \
+			-t ${IMAGE} -f Dockerfile .
+		'''
+	  }
+	}
 
 	stage('Start DB (tests)') {
 	  steps {
@@ -75,6 +82,25 @@ pipeline {
 	  }
 	}
 
+
+	stage('Gerando Relatório de Análise Pylint') {
+	  steps {
+		sh '''
+		pylint . -r n --msg-template="{path}:{line}: [{msg_id}({symbol}), {obj}] {msg}" --output=coverage-reports/pylint-report.txt
+		'''
+	  }
+	}
+
+
+	stage('Gerando Relatório de Análise Bandit') {
+	  steps {
+		sh '''
+		bandit -r . --format json --output coverage-reports/bandit-report.json
+		'''
+	  }
+	}
+
+
 	stage('Unit tests') {
 	  steps {
 		sh '''
@@ -86,14 +112,14 @@ pipeline {
 			-v $PWD:/workspace -w /workspace \
 			${IMAGE} sh -lc "pytest -q --maxfail=1 --disable-warnings \
 			  --cov=oraculoicms_app --cov-report=xml:coverage-reports/coverage.xml \
-			  --junitxml=report-junit.xml"
+			  --junitxml=coverage-reports/pytest-report.xml --omit="tests/*""
 		'''
 	  }
 	post {
 	  always {
-		junit 'report-junit.xml'
+		junit 'coverage-reports/pytest-report.xml'
 		publishCoverage(
-		  adapters: [coberturaAdapter('coverage.xml')],
+		  adapters: [coberturaAdapter('coverage-reports/coverage.xml')],
 		  sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
 		)
 	  }
@@ -104,7 +130,7 @@ pipeline {
       steps {
         sh '''
           # usa .env.staging (oraculoicms_staging)
-          docker compose -f ${COMPOSE_BASE} -f ${COMPOSE_STG} up -d
+          docker compose -f ${COMPOSE_BASE} -f ${COMPOSE_STG} up -d --force-recreate --no-deps web
         '''
       }
     }
@@ -120,7 +146,9 @@ pipeline {
 				  -Dsonar.exclusions=**/tests/**,**/migrations/**,**/__pycache__/**,**/*.yaml,Jenkinsfile \
 				  -Dsonar.python.version=3.12 \
 				  -Dsonar.python.coverage.reportPaths=coverage-reports/coverage.xml \
-				  -Dsonar.python.xunit.reportPath=report-junit.xml \
+				  -Dsonar.python.xunit.reportPath=coverage-reports/pytest-report.xml \
+				  -Dsonar.python.pylint.reportPaths=coverage-reports/pylint-report.txt \
+				  -Dsonar.python.bandit.reportPaths=bandit-report.json \
 				  -Dsonar.verbose=true
 			  '''
 				// Adjust based on your project structure
