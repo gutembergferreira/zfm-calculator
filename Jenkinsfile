@@ -86,7 +86,13 @@ pipeline {
 	stage('Gerando Relatório de Análise Pylint') {
 	  steps {
 		sh '''
-		pylint . -r n --msg-template="{path}:{line}: [{msg_id}({symbol}), {obj}] {msg}" --output=coverage-reports/pylint-report.txt
+		docker run --rm \
+			--network ${COMPOSE_PROJECT_NAME}_default \
+			-e FLASK_APP=oraculoicms_app.wsgi \
+			-e DISABLE_SHEETS=1 \
+       		-e DISABLE_SCHEDULER=1 \
+			-v $PWD:/workspace -w /workspace \
+			${IMAGE} sh -lc "pylint oraculoicms_app -r n --msg-template="{path}:{line}: [{msg_id}({symbol}), {obj}] {msg}" --output=coverage-reports/pylint-report.txt"
 		'''
 	  }
 	}
@@ -95,7 +101,13 @@ pipeline {
 	stage('Gerando Relatório de Análise Bandit') {
 	  steps {
 		sh '''
-		bandit -r . --format json --output coverage-reports/bandit-report.json
+		docker run --rm \
+			--network ${COMPOSE_PROJECT_NAME}_default \
+			-e FLASK_APP=oraculoicms_app.wsgi \
+			-e DISABLE_SHEETS=1 \
+       		-e DISABLE_SCHEDULER=1 \
+			-v $PWD:/workspace -w /workspace \
+			${IMAGE} sh -lc "bandit -r oraculoicms_app --format json --output coverage-reports/bandit-report.json"
 		'''
 	  }
 	}
