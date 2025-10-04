@@ -86,7 +86,6 @@ pipeline {
 	stage('Gerando Relatório de Análise Pylint') {
 	  steps {
 		sh '''
-		  mkdir -p coverage-reports
 		  docker run --rm \
 			--network ${COMPOSE_PROJECT_NAME}_default \
 			-e FLASK_APP=oraculoicms_app.wsgi \
@@ -102,14 +101,13 @@ pipeline {
 	stage('Gerando Relatório de Análise Bandit') {
 	  steps {
 		sh '''
-		  mkdir -p coverage-reports
 		  docker run --rm \
 			--network ${COMPOSE_PROJECT_NAME}_default \
 			-e FLASK_APP=oraculoicms_app.wsgi \
 			-e DISABLE_SHEETS=1 \
 			-e DISABLE_SCHEDULER=1 \
 			-v $PWD:/workspace -w /workspace \
-			${IMAGE} sh -lc "bandit -r oraculoicms_app -f json -o bandit-report.json || true"
+			${IMAGE} sh -lc "bandit -r oraculoicms_app -f json -o bandit-report.json"
 		'''
 	  }
 	}
