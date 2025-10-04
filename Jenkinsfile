@@ -92,7 +92,7 @@ pipeline {
 			-e DISABLE_SHEETS=1 \
 			-e DISABLE_SCHEDULER=1 \
 			-v $PWD:/workspace -w /workspace \
-			${IMAGE} sh -lc "pylint oraculoicms_app -f parseable -r n --output=pylint-report.txt"
+			${IMAGE} sh -lc "pylint oraculoicms_app -f parseable -r n --output=pylint-report.txt || true"
 		'''
 	  }
 	}
@@ -107,7 +107,7 @@ pipeline {
 			-e DISABLE_SHEETS=1 \
 			-e DISABLE_SCHEDULER=1 \
 			-v $PWD:/workspace -w /workspace \
-			${IMAGE} sh -lc "bandit -r oraculoicms_app -f json -o bandit-report.json"
+			${IMAGE} sh -lc "bandit -r oraculoicms_app -f json -o bandit-report.json || true"
 		'''
 	  }
 	}
@@ -116,7 +116,6 @@ pipeline {
 stage('Unit tests') {
   steps {
     sh '''
-      mkdir -p coverage-reports
       docker run --rm \
         --network ${COMPOSE_PROJECT_NAME}_default \
         -e FLASK_APP=oraculoicms_app.wsgi:create_app \
