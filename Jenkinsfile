@@ -174,7 +174,7 @@ pipeline {
 			  sh '''
 				  /opt/sonar-scanner/bin/sonar-scanner \
 				  -Dsonar.projectKey=oraculoicms \
-				  -Dsonar.sources=oraculoicms_app,xml_parser \
+				  -Dsonar.sources=oraculoicms_app \
 				  -Dsonar.tests=tests \
 				  -Dsonar.exclusions=**/migrations/**,**/__pycache__/**,**/templates/**,**/static/** \
 				  -Dsonar.python.version=3.12 \
