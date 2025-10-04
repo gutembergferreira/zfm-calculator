@@ -109,7 +109,7 @@ pipeline {
 			-e DISABLE_SHEETS=1 \
 			-e DISABLE_SCHEDULER=1 \
 			-v $PWD:/workspace -w /workspace \
-			${IMAGE} sh -lc "bandit -r oraculoicms_app -f json -o coverage-reports/bandit-report.json || true"
+			${IMAGE} sh -lc "bandit -r oraculoicms_app -f json -o bandit-report.json || true"
 		'''
 	  }
 	}
@@ -171,7 +171,7 @@ stage('Unit tests') {
 				  -Dsonar.python.coverage.reportPaths=coverage-reports/coverage.xml \
 				  -Dsonar.python.xunit.reportPath=coverage-reports/pytest-report.xml \
 				  -Dsonar.python.pylint.reportPaths=coverage-reports/pylint-report.txt \
-				  -Dsonar.python.bandit.reportPaths=coverage-reports/bandit-report.json \
+				  -Dsonar.python.bandit.reportPaths=bandit-report.json \
 				  -Dsonar.verbose=true
 			  '''
 				// Adjust based on your project structure
