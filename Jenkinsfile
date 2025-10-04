@@ -93,7 +93,7 @@ pipeline {
 			-e DISABLE_SHEETS=1 \
 			-e DISABLE_SCHEDULER=1 \
 			-v $PWD:/workspace -w /workspace \
-			${IMAGE} sh -lc "pylint oraculoicms_app -f parseable -r n --output=coverage-reports/pylint-report.txt"
+			${IMAGE} sh -lc "pylint oraculoicms_app -f parseable -r n --output=pylint-report.txt"
 		'''
 	  }
 	}
@@ -170,7 +170,7 @@ stage('Unit tests') {
 				  -Dsonar.python.version=3.12 \
 				  -Dsonar.python.coverage.reportPaths=coverage-reports/coverage.xml \
 				  -Dsonar.python.xunit.reportPath=coverage-reports/pytest-report.xml \
-				  -Dsonar.python.pylint.reportPaths=coverage-reports/pylint-report.txt \
+				  -Dsonar.python.pylint.reportPaths=pylint-report.txt \
 				  -Dsonar.python.bandit.reportPaths=bandit-report.json \
 				  -Dsonar.verbose=true
 			  '''
