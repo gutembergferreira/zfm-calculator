@@ -23,6 +23,18 @@ ALLOWED_EXT = {"xml"}
 
 # --- helper: um único lugar com a regra de cálculo ---
 ALG_VERSION = "st-v1"
+def _get_engine_safe():
+    """
+    Pega o engine via get_motor(); se vier dict/None, reconstrói.
+    Garante que o objeto final tenha .calcula_st.
+    """
+    eng = get_motor()
+    if isinstance(eng, dict) or not callable(getattr(eng, "calcula_st", None)):
+        eng = rebuild_motor()
+    if not callable(getattr(eng, "calcula_st", None)):
+        raise RuntimeError(f"Motor inválido: {type(eng)} sem .calcula_st")
+    return eng
+
 
 def _compute_st_payload(xml_bytes, NFEXML, get_motor):
     nfe = NFEXML(xml_bytes)
@@ -32,7 +44,8 @@ def _compute_st_payload(xml_bytes, NFEXML, get_motor):
     uf_origem  = (header.get("uf_origem")  or "SP").upper()
     uf_destino = (header.get("uf_destino") or "AM").upper()
 
-    motor = get_motor()
+    motor = _get_engine_safe()
+
     linhas, total_st = [], 0.0
     for it in itens:
         r = motor.calcula_st(it, uf_origem, uf_destino, usar_multiplicador=True)
