@@ -93,10 +93,7 @@ pipeline {
 			-e DISABLE_SHEETS=1 \
 			-e DISABLE_SCHEDULER=1 \
 			-v $PWD:/workspace -w /workspace \
-			${IMAGE} sh -lc "pylint oraculoicms_app xml_parser \
-							  -f parseable \
-							  -r n \
-							  --output=coverage-reports/pylint-report.txt"
+			${IMAGE} sh -lc "pylint oraculoicms_app -f parseable -r n --output=coverage-reports/pylint-report.txt"
 		'''
 	  }
 	}
