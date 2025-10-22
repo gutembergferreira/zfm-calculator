@@ -74,7 +74,7 @@ class ResultadoItem:
 # ---------------------------------------------------------------------
 class MotorCalculo:
     """
-    Motor com consulta a 'matrices' (Google Sheets). Aplique ST só quando:
+    Motor com consulta a 'matrices' (tabelas carregadas do banco de dados). Aplique ST só quando:
       - houver regra explícita para o NCM/UF (APLICA_ST = True, ou existir MVA/ALI_INT),
       - caso contrário, NÃO aplica ST (zera MVA, base ST= venda_desc, alíquota interna=0).
     """

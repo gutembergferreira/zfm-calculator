@@ -37,8 +37,8 @@ def create_app(config_object: type[Config] = Config) -> Flask:
         # Extensões (DB/Bcrypt/Migrate/Scheduler)
     init_extensions(app)
 
-    # Serviços (Sheets + Motor de cálculo) — ficam disponíveis em app.extensions
-    init_sheets(app)        # app.extensions["sheet_client"], ["matrices"]
+    # Serviços (matrizes + motor de cálculo) — ficam disponíveis em app.extensions
+    init_sheets(app)        # app.extensions["matrices"]
     init_motor(app)         # app.extensions["motor"]
     app.config["STARTED_AT"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 

@@ -6,6 +6,7 @@ import hashlib
 import datetime as dt
 import pandas as pd
 import pytest
+from sqlalchemy import delete
 
 from oraculoicms_app.extensions import db
 from oraculoicms_app.models.file import UserFile, NFESummary
@@ -277,15 +278,10 @@ def test_exportar_pdf_payload_invalido_redirect(logged_client_user,url):
 def test_admin_run_update_executa(logged_client_admin, monkeypatch,url):
     called = {"update": False, "reload": False, "rebuild": False}
 
-    class _SC:
-        def __init__(self): self.service_email = "x"; self.sh = None
-
-    def _fake_get_sheet_client(): return _SC()
-    def _fake_run_update_am(sc): called["update"] = True
+    def _fake_run_update_am(): called["update"] = True
     def _fake_reload(): called["reload"] = True
     def _fake_rebuild(): called["rebuild"] = True
 
-    monkeypatch.setattr(nfe_mod, "get_sheet_client", _fake_get_sheet_client)
     monkeypatch.setattr(nfe_mod, "run_update_am", _fake_run_update_am)
     monkeypatch.setattr(nfe_mod, "reload_matrices", _fake_reload)
     monkeypatch.setattr(nfe_mod, "rebuild_motor", _fake_rebuild)
@@ -311,41 +307,31 @@ def test_admin_reload_executa(logged_client_admin, monkeypatch,url):
 # /nfe/config (GET) e /nfe/config/save (POST)
 # ----------------------------
 def test_config_view_ok(logged_client_admin, monkeypatch,url):
-    # get_matrices => retorna df "sources"
-    df = pd.DataFrame([
+    df_sources = pd.DataFrame([
         {"ATIVO": "1", "UF": "AM", "NOME": "Fonte X", "URL": "http://x", "TIPO": "csv", "PARSER": "p", "PRIORIDADE": "1"},
         {"ATIVO": "0", "UF": "SP", "NOME": "Fonte Y", "URL": "http://y", "TIPO": "html", "PARSER": "p2", "PRIORIDADE": "2"},
     ])
-    monkeypatch.setattr(nfe_mod, "get_matrices", lambda: {"sources": df})
-
-    class _WS:
-        def __init__(self, title): self.title = title; self.row_count = 10; self.col_count = 5
-    class _SH:
-        def __init__(self): self.title = "Planilha Teste"
-        def worksheets(self): return [_WS("aba1"), _WS("aba2")]
-    class _SC:
-        def __init__(self): self.service_email = "svc@test"; self.sh = _SH()
-
-    monkeypatch.setattr(nfe_mod, "get_sheet_client", lambda: _SC())
+    df_log = pd.DataFrame([
+        {"EXECUTADO_EM": "2024-01-01T00:00:00", "STATUS": "OK", "MENSAGEM": "ok", "LINHAS": 10}
+    ])
+    monkeypatch.setattr(nfe_mod, "get_matrices", lambda: {"sources": df_sources, "sources_log": df_log})
 
     resp = logged_client_admin.get(url("nfe.config_view"))
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "Planilha Teste" in body
+    assert "Banco de dados" in body
     assert "Fonte X" in body
+    assert "Última atualização automática" in body
 
 
-def test_config_save_ok(logged_client_admin, monkeypatch,url):
-    wrote = {"ok": False, "df": None}
-    class _SC:
-        def __init__(self): self.service_email="svc@test"
-        def write_df(self, name, df_in):
-            wrote["ok"] = True
-            wrote["df"] = df_in
+def test_config_save_ok(logged_client_admin, monkeypatch, url, app, db_session):
+    with app.app_context():
+        db_session.execute(delete(nfe_mod.Source))
+        db_session.commit()
 
-    monkeypatch.setattr(nfe_mod, "get_sheet_client", lambda: _SC())
-    monkeypatch.setattr(nfe_mod, "reload_matrices", lambda: None)
-    monkeypatch.setattr(nfe_mod, "rebuild_motor", lambda: None)
+    called = {"reload": False, "rebuild": False}
+    monkeypatch.setattr(nfe_mod, "reload_matrices", lambda: called.__setitem__("reload", True))
+    monkeypatch.setattr(nfe_mod, "rebuild_motor", lambda: called.__setitem__("rebuild", True))
 
     cols = ["ATIVO","UF","NOME","URL","TIPO","PARSER","PRIORIDADE"]
     form = {
@@ -368,29 +354,32 @@ def test_config_save_ok(logged_client_admin, monkeypatch,url):
     }
     resp = logged_client_admin.post(url("nfe.config_save"), data=form, follow_redirects=True)
     assert resp.status_code == 200
-    assert wrote["ok"] is True
-    # Normalizações aplicadas: ATIVO em "1"/"0", PRIORIDADE numérica ou vazio
-    df_out: pd.DataFrame = wrote["df"]
-    assert list(df_out.columns) == cols
-    assert set(df_out["ATIVO"].unique()).issubset({"0","1"})
+    assert called["reload"] and called["rebuild"]
+
+    with app.app_context():
+        rows = nfe_mod.Source.query.order_by(nfe_mod.Source.nome).all()
+        assert len(rows) == 2
+        data = {row.nome: row for row in rows}
+        assert data["Fonte X"].ativo is True
+        assert data["Fonte X"].prioridade == 1
+        assert data["Fonte Y"].ativo is False
+        assert data["Fonte Y"].prioridade == 2
 
 
 # ----------------------------
 # /nfe/debug/sheets
 # ----------------------------
 def test_debug_sheets_ok(client, monkeypatch,url):
-    class _WS:
-        def __init__(self, t): self.title=t
-    class _SH:
-        def __init__(self): self.title="Sheet";
-        def worksheets(self): return [_WS("aba")]
-    class _SC:
-        def __init__(self): self.service_email="svc@test"; self.sh=_SH()
+    df_sources = pd.DataFrame([
+        {"ATIVO": "1", "UF": "AM", "NOME": "Fonte"}
+    ])
+    df_logs = pd.DataFrame([
+        {"EXECUTADO_EM": "2024-01-01T00:00:00", "STATUS": "OK"}
+    ])
+    monkeypatch.setattr(nfe_mod, "get_matrices", lambda: {"sources": df_sources, "sources_log": df_logs})
 
-    monkeypatch.setattr(nfe_mod, "get_sheet_client", lambda: _SC())
     r = client.get(url("nfe.debug_sheets"))
     assert r.status_code == 200
     data = r.get_json()
-    assert data["service_email"] == "svc@test"
-    assert data["spreadsheet_title"] == "Sheet"
-    assert data["worksheets"] == ["aba"]
+    assert data["sources_rows"] == 1
+    assert data["log_entries"] == 1

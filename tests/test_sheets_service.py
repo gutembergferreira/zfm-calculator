@@ -1,91 +1,61 @@
-# tests/test_sheets_service.py
-from __future__ import annotations
+import pandas as pd
+from sqlalchemy import delete
 
-import types
-import pytest
-
+from oraculoicms_app.models.matrix import Source, STRegra
 from oraculoicms_app.services.sheets_service import (
-    init_sheets, get_sheet_client, get_matrices, reload_matrices
+    init_sheets,
+    get_matrices,
+    reload_matrices,
 )
 
 
-@pytest.fixture
-def clear_env(monkeypatch):
-    """Garante que as flags de controle não interfiram entre testes."""
-    for k in ("DISABLE_SHEETS", "SKIP_SHEETS"):
-        monkeypatch.delenv(k, raising=False)
-    yield
+def _make_source(db_session, **kwargs):
+    src = Source(
+        nome=kwargs.get("nome", "Fonte"),
+        ativo=kwargs.get("ativo", True),
+        uf=kwargs.get("uf"),
+        url=kwargs.get("url"),
+        tipo=kwargs.get("tipo"),
+        parser=kwargs.get("parser"),
+        prioridade=kwargs.get("prioridade"),
+    )
+    db_session.add(src)
+    return src
 
 
-def test_init_sheets_disabled_in_testing(app, clear_env, caplog):
-    # app fixture já vem com TESTING=True
+def test_init_sheets_populates_matrices(app, db_session):
     with app.app_context():
+        _make_source(db_session, nome="Fonte X", uf="AM", tipo="csv")
+        db_session.add(STRegra(ncm="123", ativo=True, st_aplica=True))
+        db_session.commit()
+
         init_sheets(app)
-        assert app.extensions.get("sheet_client") is None
-        assert app.extensions.get("matrices") == {}
-        # helpers devem refletir o estado
-        assert get_sheet_client() is None
-        assert get_matrices() == {}
+        matrices = get_matrices()
+
+        assert "sources" in matrices
+        df_sources = matrices["sources"]
+        assert isinstance(df_sources, pd.DataFrame)
+        assert df_sources.loc[0, "NOME"] == "Fonte X"
+
+        df_st = matrices["st_regras"]
+        assert not df_st.empty
+        assert df_st.loc[0, "NCM"] == "123"
 
 
-def test_init_sheets_skip_via_env(app, clear_env, monkeypatch):
-    # Simula ambiente não-test, porém com SKIP_SHEETS=1
-    app.config["TESTING"] = False
-    monkeypatch.setenv("SKIP_SHEETS", "1")
-
-    # cria um SheetClient fake só para checar que no final ele fica None
-    class FakeClient:
-        worksheets = ["Aba1", "Aba2"]
-        def matrices(self): return {"M": 1}
-
-    # Garantia: mesmo que exista SheetClient, a flag deve zerar
-    import sheets as sheets_mod  # seu módulo real
-    monkeypatch.setattr(sheets_mod, "SheetClient", FakeClient, raising=True)
-
+def test_reload_matrices_reads_latest_data(app, db_session):
     with app.app_context():
+        db_session.execute(delete(Source))
+        db_session.commit()
+
         init_sheets(app)
-        assert app.extensions.get("sheet_client") is None
-        # quando pula por SKIP_SHEETS, o código preenche 'worksheets' (não 'matrices')
-        assert app.extensions.get("worksheets") == []
+        matrices = get_matrices()
+        assert matrices["sources"].empty
 
+        _make_source(db_session, nome="Nova Fonte", ativo=False)
+        db_session.commit()
 
-def test_init_sheets_graceful_on_misconfig(app, clear_env, monkeypatch, caplog):
-    # Sem TESTING e sem SKIP/DISABLE => executa bloco try/except
-    app.config["TESTING"] = False
-
-    import sheets as sheets_mod
-    # Força o construtor a levantar SheetMisconfig
-    class Boom(sheets_mod.SheetMisconfig): pass
-    def boom_client(*a, **k):
-        raise Boom("faltou SPREADSHEET_ID")
-
-    monkeypatch.setattr(sheets_mod, "SheetClient", boom_client, raising=True)
-
-    with app.app_context():
-        init_sheets(app)
-        # deve continuar sem falhar e desligar Sheets
-        assert app.extensions.get("sheet_client") is None
-        assert app.extensions.get("matrices") == {}
-        # log de warning foi emitido
-        assert any("Sheets não configurado corretamente" in m for m in caplog.text.splitlines())
-
-
-def test_reload_matrices_uses_client(app):
-    # Prepara um client fake com matrices()
-    class FakeClient:
-        def __init__(self): self.calls = 0
-        def matrices(self):
-            self.calls += 1
-            return {"K": 42, "calls": self.calls}
-
-    with app.app_context():
-        # injeta client e estado inicial
-        app.extensions["sheet_client"] = FakeClient()
-        app.extensions["matrices"] = {}
-
-        out1 = reload_matrices()
-        assert out1 == {"K": 42, "calls": 1}
-        assert get_matrices() == {"K": 42, "calls": 1}
-
-        out2 = reload_matrices()
-        assert out2["calls"] == 2  # foi chamado novamente
+        updated = reload_matrices()
+        df_sources = updated["sources"]
+        assert len(df_sources.index) == 1
+        assert df_sources.loc[0, "NOME"] == "Nova Fonte"
+        assert df_sources.loc[0, "ATIVO"] == 0

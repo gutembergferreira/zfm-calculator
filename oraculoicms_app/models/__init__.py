@@ -8,6 +8,16 @@ from .user_quota import UserQuota
 from .file import UserFile, NFESummary, AuditLog
 from .payment_config import PaymentConfig
 from .support import KBArticle,VideoTutorial,FeedbackMessage,SurveyCampaign,SurveyQuestion,SurveyResponse,SurveyAnswer
+from .matrix import (
+    Aliquota,
+    Mva,
+    Multiplicador,
+    CreditoPresumido,
+    STRegra,
+    ConfigParametro,
+    Source,
+    SourceLog,
+)
 
 
 __all__ = [
@@ -28,5 +38,13 @@ __all__ = [
     "SurveyCampaign",
     "SurveyQuestion",
     "SurveyResponse",
-    "SurveyAnswer"
+    "SurveyAnswer",
+    "Aliquota",
+    "Mva",
+    "Multiplicador",
+    "CreditoPresumido",
+    "STRegra",
+    "ConfigParametro",
+    "Source",
+    "SourceLog",
 ]

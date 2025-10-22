@@ -3,7 +3,12 @@ import hashlib
 import requests
 import pandas as pd
 from datetime import datetime
-from sheets import SheetClient
+from decimal import Decimal
+
+from sqlalchemy import delete
+
+from oraculoicms_app.extensions import db
+from oraculoicms_app.models.matrix import Mva, Multiplicador, STRegra, SourceLog
 
 SEFAZ_AM_XLSX = "https://online.sefaz.am.gov.br/sinf2004/DI/Tabela%20ST%20-%20Atualizada%20pela%20Lei%206108-22.xlsx"
 
@@ -72,24 +77,85 @@ def normalize_st_am(df: pd.DataFrame) -> dict:
     }
 
 # ---------- writer & runner ----------
-def write_to_sheets(tables: dict, sh: SheetClient):
-    for name, df in tables.items():
-        sh.write_df(name, df)
+def _is_truthy(value) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float, Decimal)):
+        return value != 0
+    text = str(value).strip().upper()
+    return text in {"1", "TRUE", "T", "SIM", "S", "Y", "YES", "ON"}
 
-def run_update_am(sheet_client: SheetClient):
-    ts = datetime.now().isoformat(timespec="seconds")
+
+def _clean_numeric(value):
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    return Decimal(str(value)) if value != "" else None
+
+
+def write_to_database(tables: dict):
+    with db.session.begin():
+        if "mva" in tables:
+            df = tables["mva"].fillna("")
+            db.session.execute(delete(Mva))
+            for row in df.to_dict(orient="records"):
+                db.session.add(Mva(
+                    ncm=str(row.get("NCM", "")),
+                    segmento=row.get("SEGMENTO") or None,
+                    mva=_clean_numeric(row.get("MVA")) or Decimal("0"),
+                ))
+
+        if "multiplicadores" in tables:
+            df = tables["multiplicadores"].fillna("")
+            db.session.execute(delete(Multiplicador))
+            for row in df.to_dict(orient="records"):
+                db.session.add(Multiplicador(
+                    ncm=str(row.get("NCM", "")),
+                    regiao=row.get("REGIAO") or None,
+                    multiplicador=_clean_numeric(row.get("MULT")) or Decimal("0"),
+                ))
+
+        if "st_regras" in tables:
+            df = tables["st_regras"].fillna("")
+            db.session.execute(delete(STRegra))
+            for row in df.to_dict(orient="records"):
+                db.session.add(STRegra(
+                    ativo=_is_truthy(row.get("ATIVO")),
+                    ncm=str(row.get("NCM", "")),
+                    cest=row.get("CEST") or None,
+                    cst_incluir=row.get("CST_INCLUIR") or None,
+                    cst_excluir=row.get("CST_EXCLUIR") or None,
+                    cfop_ini=row.get("CFOP_INI") or None,
+                    cfop_fim=row.get("CFOP_FIM") or None,
+                    st_aplica=_is_truthy(row.get("ST_APLICA")),
+                ))
+
+
+def run_update_am():
+    dt_now = datetime.now()
+    ts = dt_now.isoformat(timespec="seconds")
     nome = "ST AM – XLSX"
     try:
         df_raw = fetch_st_am_xlsx()
         version = _version_hash(df_raw)
         tables = normalize_st_am(df_raw)
-        write_to_sheets(tables, sheet_client)
+        write_to_database(tables)
         status, msg, n = "OK", "Atualizado via XLSX SEFAZ/AM", len(df_raw)
     except Exception as e:
         status, msg, n, version = "ERRO", str(e), 0, ""
 
     # log (best-effort)
     try:
-        sheet_client.append_row("sources_log", [ts, "AM", nome, status, msg, n, version])
+        with db.session.begin():
+            db.session.add(SourceLog(
+                executado_em=dt_now,
+                uf="AM",
+                nome=nome,
+                status=status,
+                mensagem=msg,
+                linhas=n,
+                versao=version,
+            ))
     except Exception:
-        pass
+        db.session.rollback()
