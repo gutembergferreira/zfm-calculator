@@ -1,7 +1,10 @@
-# ZFM ICMS Copilot — Flask + Google Sheets
+# ZFM ICMS Copilot — Flask + Banco de Dados
+
+> **Atualização:** As matrizes utilizadas pelo motor de cálculo (aliquotas, MVA, ST, etc.) agora são carregadas a partir das tabelas do banco de dados (`aliquotas`, `mva`, `multiplicadores`, `st_regras`, `sources`, `sources_log`, `config`, `creditos_presumidos`). A antiga integração com Google Sheets foi removida.
 
 
 ## 1) Planilha Google (estrutura sugerida)
+> **Histórico:** Esta seção descreve a antiga estrutura em Google Sheets e pode ser utilizada como referência para popular as tabelas do banco de dados com os mesmos campos.
 Crie uma planilha com **estas abas** e **headers**:
 
 

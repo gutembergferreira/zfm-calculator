@@ -373,9 +373,9 @@
                   <div class="card-body">
                     <div class="d-flex flex-wrap justify-content-between align-items-center">
                       <div>
-                        <div class="text-muted small">Planilha conectada</div>
-                        <div class="h6 mb-0">{{ sheet_title or '—' }}</div>
-                        <div class="small text-muted">Service Account: <code>{{ service_email or '—' }}</code></div>
+                        <div class="text-muted small">Parâmetros armazenados</div>
+                        <div class="h6 mb-0">{{ sheet_title or 'Banco de dados' }}</div>
+                        <div class="small text-muted">Fontes ativas: {{ sources_count or 0 }}</div>
                       </div>
                       <div class="d-flex gap-2">
                         <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('nfe.admin_reload') }}">
@@ -396,25 +396,6 @@
                       <div class="col-md-6">
                         <div class="card h-100">
                           <div class="card-body">
-                            <div class="text-muted small mb-2">Abas encontradas</div>
-                            <ul class="list-group list-group-flush">
-                              {% for ws in worksheets %}
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                  <span>{{ ws.title }}</span>
-                                  <span class="badge text-bg-light">{{ ws.rows }} x {{ ws.cols }}</span>
-                                </li>
-                              {% endfor %}
-                              {% if not worksheets %}
-                                <li class="list-group-item text-muted">Nenhuma aba encontrada.</li>
-                              {% endif %}
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div class="col-md-6">
-                        <div class="card h-100">
-                          <div class="card-body">
                             <div class="text-muted small mb-2">Resumo</div>
                             <div class="row row-cols-2 g-2">
                               <div class="col">
@@ -425,14 +406,22 @@
                               </div>
                               <div class="col">
                                 <div class="stat">
-                                  <div class="label">Fontes ativas</div>
+                                  <div class="label">Fontes</div>
                                   <div class="value">{{ sources_count or 0 }}</div>
                                 </div>
                               </div>
                             </div>
-                            <div class="small text-muted mt-2">
-                              Caso altere permissões da planilha, lembre-se de compartilhar com a service account acima.
-                            </div>
+                            <div class="small text-muted mt-2">Dados apresentados são carregados diretamente do banco de dados.</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="col-md-6">
+                        <div class="card h-100">
+                          <div class="card-body">
+                            <div class="text-muted small mb-2">Diagnóstico</div>
+                            <p class="small mb-0">Use os botões acima para recarregar as matrizes ou acessar a página de configurações.</p>
+                            <p class="small text-muted">As tabelas `sources` e `st_regras` são atualizadas pelo atualizador automático.</p>
                           </div>
                         </div>
                       </div>

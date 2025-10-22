@@ -4,8 +4,10 @@ from __future__ import annotations
 import io, json, base64, datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify,current_app
 from oraculoicms_app.decorators import login_required, admin_required
-from oraculoicms_app.services.sheets_service import get_sheet_client, get_matrices, reload_matrices
+from oraculoicms_app.services.sheets_service import get_matrices, reload_matrices
 from oraculoicms_app.services.calc_service import get_motor, rebuild_motor
+from sqlalchemy import delete
+
 from updater import run_update_am
 from xml_parser import NFEXML
 from report import gerar_pdf
@@ -15,6 +17,9 @@ from oraculoicms_app.extensions import db
 from oraculoicms_app.models.file import NFESummary, UserFile
 from .files import current_user  # usa o helper que criamos
 from datetime import datetime
+import pandas as pd
+
+from oraculoicms_app.models.matrix import Source
 
 from .nfe_indexer import upsert_summary_from_xml
 
@@ -265,11 +270,10 @@ def exportar_pdf():
 @bp.route("/admin/run-update")
 @admin_required
 def run_update():
-    sc = get_sheet_client()
-    run_update_am(sc)
+    run_update_am()
     reload_matrices()
     rebuild_motor()
-    flash("Atualização AM executada e parâmetros recarregados.", "success")
+    flash("Atualização AM executada e parâmetros recarregados do banco de dados.", "success")
     return redirect(url_for("core.index"))
 
 @bp.route("/admin/reload")
@@ -277,7 +281,7 @@ def run_update():
 def admin_reload():
     reload_matrices()
     rebuild_motor()
-    flash("Parâmetros recarregados do Google Sheets.", "info")
+    flash("Parâmetros recarregados do banco de dados.", "info")
     return redirect(url_for("core.index"))
 
 @bp.route("/config", methods=["GET"])
@@ -286,26 +290,30 @@ def config_view():
     matrices = get_matrices()
     df_sources = matrices.get("sources")
     if df_sources is None:
-        import pandas as pd
         df_sources = pd.DataFrame(columns=["ATIVO","UF","NOME","URL","TIPO","PARSER","PRIORIDADE"])
-
-    try:
-        sh = get_sheet_client().sh
-        worksheets = [{"title": ws.title, "rows": ws.row_count, "cols": ws.col_count} for ws in sh.worksheets()]
-        sheet_title = sh.title
-        service_email = get_sheet_client().service_email
-    except Exception:
-        worksheets, sheet_title, service_email = [], None, None
 
     sources = df_sources.fillna("").to_dict(orient="records")
     columns = list(df_sources.columns)
     updated_at = datetime.now().isoformat(timespec="seconds")
     sources_count = sum(1 for r in sources if str(r.get("ATIVO","")).strip() in ("1","true","True","on","ON"))
 
+    df_log = matrices.get("sources_log")
+    last_log = None
+    if df_log is not None and not df_log.empty:
+        last_entry = df_log.sort_values("EXECUTADO_EM").iloc[-1]
+        last_log = {
+            "executado_em": str(last_entry.get("EXECUTADO_EM", "")),
+            "status": last_entry.get("STATUS", ""),
+            "mensagem": last_entry.get("MENSAGEM", ""),
+            "linhas": last_entry.get("LINHAS", 0),
+        }
+
     return render_template("config.html",
-        sources=sources, columns=columns,
-        sheet_title=sheet_title, service_email=service_email,
-        worksheets=worksheets, updated_at=updated_at, sources_count=sources_count
+        sources=sources,
+        columns=columns,
+        updated_at=updated_at,
+        sources_count=sources_count,
+        last_log=last_log,
     )
 
 @bp.route("/config/save", methods=["POST"])
@@ -326,7 +334,6 @@ def config_save():
         if any(row):
             rows.append(row)
 
-    import pandas as pd
     df_new = pd.DataFrame(rows, columns=cols)
 
     if "ATIVO" in df_new.columns:
@@ -335,11 +342,23 @@ def config_save():
         df_new["PRIORIDADE"] = df_new["PRIORIDADE"].apply(lambda x: str(x).strip() if str(x).strip().isdigit() else "")
 
     try:
-        get_sheet_client().write_df("sources", df_new)
+        db.session.execute(delete(Source))
+        for row in df_new.to_dict(orient="records"):
+            db.session.add(Source(
+                ativo=str(row.get("ATIVO", "0")).strip() in ("1","true","True","on","ON"),
+                uf=row.get("UF") or None,
+                nome=row.get("NOME") or "",
+                url=row.get("URL") or None,
+                tipo=row.get("TIPO") or None,
+                parser=row.get("PARSER") or None,
+                prioridade=int(row.get("PRIORIDADE")) if str(row.get("PRIORIDADE", "")).isdigit() else None,
+            ))
+        db.session.commit()
         reload_matrices()
         rebuild_motor()
-        flash("Fontes salvas com sucesso.", "success")
+        flash("Fontes salvas com sucesso no banco de dados.", "success")
     except Exception as e:
+        db.session.rollback()
         flash(f"Falha ao salvar fontes: {e}", "danger")
 
     return redirect(url_for("nfe.config_view"))
@@ -347,14 +366,12 @@ def config_save():
 # Diagnóstico opcional
 @bp.route("/debug/sheets")
 def debug_sheets():
-    try:
-        sc = get_sheet_client()
-        info = {
-            "service_email": sc.service_email,
-            "spreadsheet_title": sc.sh.title,
-            "worksheets": [ws.title for ws in sc.sh.worksheets()],
-            "updated_at": datetime.now().isoformat(timespec="seconds"),
-        }
-        return jsonify(info), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    matrices = get_matrices()
+    df_sources = matrices.get("sources")
+    df_log = matrices.get("sources_log")
+    info = {
+        "sources_rows": 0 if df_sources is None else len(df_sources.index),
+        "log_entries": 0 if df_log is None else len(df_log.index),
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    return jsonify(info), 200

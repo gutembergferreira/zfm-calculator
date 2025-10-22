@@ -4,15 +4,19 @@
 {% block content %}
 
 <div class="row g-3">
-  <!-- Info da planilha -->
+  <!-- Resumo das configurações -->
   <div class="col-12">
     <div class="card shadow-sm">
       <div class="card-body">
         <div class="d-flex flex-wrap justify-content-between align-items-center">
           <div>
-            <div class="text-muted small">Planilha conectada</div>
-            <div class="h6 mb-0">{{ sheet_title or '—' }}</div>
-            <div class="small text-muted">Service Account: <code>{{ service_email or '—' }}</code></div>
+            <div class="text-muted small">Parâmetros armazenados</div>
+            <div class="h6 mb-0">Banco de dados</div>
+            {% if last_log %}
+            <div class="small text-muted">Última atualização automática: {{ last_log.executado_em }} ({{ last_log.status }})</div>
+            {% else %}
+            <div class="small text-muted">Nenhum histórico de atualização encontrado.</div>
+            {% endif %}
           </div>
           <div class="d-flex gap-2">
             <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('nfe.admin_reload') }}"><i class="bi bi-arrow-clockwise me-1"></i>Recarregar parâmetros</a>
@@ -24,30 +28,23 @@
           <div class="col-md-6">
             <div class="card h-100">
               <div class="card-body">
-                <div class="text-muted small mb-2">Abas encontradas</div>
-                <ul class="list-group list-group-flush">
-                  {% for ws in worksheets %}
-                  <li class="list-group-item d-flex justify-content-between align-items-center">
-                    <span>{{ ws.title }}</span>
-                    <span class="badge text-bg-light">{{ ws.rows }} x {{ ws.cols }}</span>
-                  </li>
-                  {% endfor %}
-                  {% if not worksheets %}
-                  <li class="list-group-item text-muted">Nenhuma aba encontrada.</li>
-                  {% endif %}
-                </ul>
+                <div class="text-muted small mb-2">Resumo</div>
+                <div class="row row-cols-2 g-2">
+                  <div class="col"><div class="stat"><div class="label">Atualizado às</div><div class="value">{{ updated_at or '—' }}</div></div></div>
+                  <div class="col"><div class="stat"><div class="label">Fontes ativas</div><div class="value">{{ sources_count or 0 }}</div></div></div>
+                </div>
+                {% if last_log %}
+                <div class="small text-muted mt-2">Última execução automática processou {{ last_log.linhas or 0 }} linhas. Mensagem: {{ last_log.mensagem or '—' }}.</div>
+                {% endif %}
               </div>
             </div>
           </div>
           <div class="col-md-6">
             <div class="card h-100">
               <div class="card-body">
-                <div class="text-muted small mb-2">Resumo</div>
-                <div class="row row-cols-2 g-2">
-                  <div class="col"><div class="stat"><div class="label">Atualizado às</div><div class="value">{{ updated_at or '—' }}</div></div></div>
-                  <div class="col"><div class="stat"><div class="label">Fontes ativas</div><div class="value">{{ sources_count or 0 }}</div></div></div>
-                </div>
-                <div class="small text-muted mt-2">Caso altere permissões da planilha, lembre-se de compartilhar com a service account acima.</div>
+                <div class="text-muted small mb-2">Diagnóstico</div>
+                <p class="small mb-0">Os parâmetros utilizados pelo motor de cálculo são carregados diretamente das tabelas do banco de dados.</p>
+                <p class="small text-muted">Para verificar os dados crus utilize o botão "Recarregar parâmetros" após qualquer alteração direta no banco.</p>
               </div>
             </div>
           </div>

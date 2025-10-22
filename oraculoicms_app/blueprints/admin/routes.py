@@ -54,21 +54,20 @@ def _system_snapshot():
         except Exception as e:
             st_ok, st_detail = False, str(e)
 
-    # Google Sheets
-    gs_ok, gs_detail = False, "Credenciais ausentes"
+    # Matrizes do motor
     try:
-        # se você tiver um helper no seu projeto, use aqui
-        # from ...services.sheets_service import get_client_status
-        # gs_ok, gs_detail = get_client_status()
-        if os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") or current_app.config.get("GOOGLE_SERVICE_ACCOUNT_JSON"):
-            gs_ok, gs_detail = True, "Variáveis presentes (não testado)"
+        from ...services.sheets_service import get_matrices
+        matrices = get_matrices() or {}
+        df_sources = matrices.get("sources")
+        total = 0 if df_sources is None else len(df_sources.index)
+        gs_ok, gs_detail = True, f"{total} fontes carregadas"
     except Exception as e:
         gs_ok, gs_detail = False, str(e)
 
     statuses = [
         dict(name="Postgres", ok=pg_ok, detail=pg_detail),
         dict(name="Stripe", ok=st_ok, detail=st_detail),
-        dict(name="Google Sheets", ok=gs_ok, detail=gs_detail),
+        dict(name="Parâmetros", ok=gs_ok, detail=gs_detail),
     ]
 
     # Server info
@@ -88,30 +87,19 @@ def _config_snapshot():
     Busca os mesmos dados que a view de config.html usa.
     Adeque de acordo com seu módulo de sheets.
     """
-    sheet_title = None
-    service_email = None
-    worksheets = []
-    updated_at = None
-    sources_count = 0
     try:
-        # Exemplo: se você tiver uma service centralizada
-        # from ...services.sheets_service import get_sheet_context
-        # ctx = get_sheet_context()
-        # sheet_title = ctx.sheet_title
-        # service_email = ctx.service_email
-        # worksheets = ctx.worksheets  # [{'title':..., 'rows':..., 'cols':...}, ...]
-        # updated_at = ctx.updated_at
-        # sources_count = ctx.sources_count
-        pass
+        from ...services.sheets_service import get_matrices
+        matrices = get_matrices() or {}
+        df_sources = matrices.get("sources")
+        sources_count = 0 if df_sources is None else len(df_sources.index)
     except Exception as e:
         current_app.logger.warning("Config snapshot error: %s", e)
+        sources_count = 0
 
-    # Fallback (caso ainda não tenha integrado o helper)
-    sheet_title = sheet_title or current_app.config.get("SHEET_TITLE")
-    service_email = service_email or os.environ.get("GOOGLE_SERVICE_ACCOUNT_EMAIL")
-    worksheets = worksheets or []
-    updated_at = updated_at or "-"
-    sources_count = sources_count or 0
+    sheet_title = "Banco de dados"
+    service_email = None
+    worksheets = []
+    updated_at = datetime.utcnow().isoformat(timespec="seconds")
     return sheet_title, service_email, worksheets, updated_at, sources_count
 
 # ---------------- ADMIN: Painel ----------------
