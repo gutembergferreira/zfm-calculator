@@ -206,8 +206,8 @@ def _enforce_plan_limits(user, size_add:int) -> tuple[bool,str]:
         used_mb = round(quota.storage_bytes/1048576,1)
         return False, f"Limite de armazenamento do plano excedido ({used_mb}MB/{plan.max_storage_mb}MB)."
 
-    if plan.max_monthly_files and (quota.month_uploads + 1) > plan.max_monthly_files:
-        return False, f"Limite mensal de uploads excedido ({quota.month_uploads}/{plan.max_monthly_files})."
+    if plan.max_uploads_month and (quota.month_uploads + 1) > plan.max_uploads_month:
+        return False, f"Limite mensal de uploads excedido ({quota.month_uploads}/{plan.max_uploads_month})."
 
     return True, ""
 

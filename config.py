@@ -51,8 +51,9 @@ class Config:
 
 class TestingConfig(Config):
     TESTING = True
-    FLASK_ENV = "testing"
-    FLASK_DEBUG = "0"
+    FLASK_ENV = "development"
+    FLASK_DEBUG = "1"
+    FLASK_APP = "oraculoicms_app"
     # Força SQLite em testes, a menos que o ambiente já tenha sido definido
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "SQLALCHEMY_DATABASE_URI",
@@ -60,16 +61,17 @@ class TestingConfig(Config):
     )
 
 class StagingConfig(Config):
-    FLASK_ENV = "staging"
-    FLASK_DEBUG = "0"
+    FLASK_ENV = "development"
+    FLASK_APP = "oraculoicms_app"
+    FLASK_DEBUG = "1"
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "SQLALCHEMY_DATABASE_URI",
-        "postgresql+psycopg://postgres:postgres@db-staging:5432/oraculoicms_staging"
+        "postgresql+psycopg://postgres:postgres@localhost:5432/oraculoicms"
     )
 
 class ProductionConfig(Config):
     FLASK_ENV = "production"
-    FLASK_DEBUG = "0"
+    FLASK_DEBUG = "1"
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "SQLALCHEMY_DATABASE_URI",
         "postgresql+psycopg://postgres:postgres@db:5432/oraculoicms"
