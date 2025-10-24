@@ -1,0 +1,100 @@
+{% extends 'config.html' %}
+
+{% block tab_content %}
+<div class="col-12">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-center">
+        <div>
+          <div class="text-muted small">Regras de Substituição Tributária</div>
+          <div class="h6 mb-0">Tabela ST — Banco de dados</div>
+          {% if last_log %}
+          <div class="small text-muted">Última atualização automática: {{ last_log.executado_em }} ({{ last_log.status }})</div>
+          {% else %}
+          <div class="small text-muted">Nenhum histórico de atualização encontrado.</div>
+          {% endif %}
+        </div>
+        <div class="d-flex gap-2">
+          <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('nfe.admin_reload') }}"><i class="bi bi-arrow-clockwise me-1"></i>Recarregar parâmetros</a>
+          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('nfe.run_update') }}"><i class="bi bi-cloud-download me-1"></i>Rodar atualizador (AM)</a>
+        </div>
+      </div>
+      <hr>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="text-muted small mb-2">Resumo</div>
+              <div class="stat"><div class="label">Atualizado às</div><div class="value">{{ updated_at or '—' }}</div></div>
+              <div class="stat"><div class="label">Regras totais</div><div class="value">{{ total or 0 }}</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="text-muted small mb-2">Atividade</div>
+              <div class="stat"><div class="label">Ativos</div><div class="value">{{ ativos or 0 }}</div></div>
+              <div class="stat"><div class="label">ST aplicável</div><div class="value">{{ aplicaveis or 0 }}</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="text-muted small mb-2">Observações</div>
+              <p class="small mb-0">As regras apresentadas abaixo são carregadas diretamente das legislações vigentes. Utilize o botão "Rodar atualizador" para importar novamente os dados oficiais ou edite manualmente conforme necessário.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="col-12">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <form method="post" action="{{ url_for('nfe.config_tables_save') }}">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="mb-0">Regras de ST (tabela <code>st_regras</code>)</h6>
+          <button type="button" class="btn btn-outline-primary btn-sm" data-add-row data-target="#st-regra-body" data-columns="{{ columns|join(',') }}">
+            <i class="bi bi-plus-lg me-1"></i>Adicionar linha
+          </button>
+        </div>
+        <input type="hidden" name="row_count" value="{{ st_regras|length }}">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle">
+            <thead class="table-light">
+              <tr>
+                {% for c in columns %}
+                  <th>{{ c }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody id="st-regra-body" class="small">
+              {% for r in st_regras %}
+                {% set row_loop = loop %}
+                <tr>
+                  {% for c in columns %}
+                    <td><input class="form-control form-control-sm" name="row-{{ row_loop.index0 }}-{{ c }}" value="{{ r[c] if r[c] is not none else '' }}"></td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+              {% if not st_regras %}
+                <tr><td colspan="{{ columns|length }}" class="text-center text-muted">Nenhuma regra cadastrada.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+        {% for c in columns %}
+          <input type="hidden" name="cols[]" value="{{ c }}">
+        {% endfor %}
+        <div class="d-flex justify-content-end gap-2">
+          <button class="btn btn-outline-secondary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

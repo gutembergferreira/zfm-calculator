@@ -1,14 +1,14 @@
 # zfm_app/blueprints/nfe.py
 # -*- coding: utf-8 -*-
 from __future__ import annotations
-import io, json, base64, datetime
+import io, json, base64, datetime, re
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify,current_app
 from oraculoicms_app.decorators import login_required, admin_required
 from oraculoicms_app.services.sheets_service import get_matrices, reload_matrices
 from oraculoicms_app.services.calc_service import get_motor, rebuild_motor
 from sqlalchemy import delete
 
-from updater import run_update_am
+from updater import run_update_am, is_truthy
 from xml_parser import NFEXML
 from report import gerar_pdf
 from calc import ItemNF, ResultadoItem
@@ -19,7 +19,7 @@ from .files import current_user  # usa o helper que criamos
 from datetime import datetime
 import pandas as pd
 
-from oraculoicms_app.models.matrix import Source
+from oraculoicms_app.models.matrix import Source, STRegra
 
 from .nfe_indexer import upsert_summary_from_xml
 
@@ -110,6 +110,25 @@ def _compute_st_payload(xml_bytes, NFEXML, get_motor):
         total_st += float(r.icms_st_devido or 0.0)
 
     return {"uf_origem": uf_origem, "uf_destino": uf_destino, "linhas": linhas, "total_st": total_st}
+
+
+def _normalize_form_ncm(value: str) -> str:
+    text = (value or "").strip()
+    digits = re.sub(r"\D", "", text)
+    return digits or text
+
+
+def _normalize_form_cest(value: str) -> str | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    digits = re.sub(r"\D", "", text)
+    return digits or text
+
+
+def _clean_optional_text(value: str) -> str | None:
+    text = (value or "").strip()
+    return text or None
 
 
 
@@ -314,6 +333,62 @@ def config_view():
         updated_at=updated_at,
         sources_count=sources_count,
         last_log=last_log,
+        active_tab="sources",
+    )
+
+
+@bp.route("/config/tabelas", methods=["GET"])
+@admin_required
+def config_tables_view():
+    matrices = get_matrices()
+    default_cols = [
+        "ATIVO",
+        "NCM",
+        "CEST",
+        "CST_INCLUIR",
+        "CST_EXCLUIR",
+        "CFOP_INI",
+        "CFOP_FIM",
+        "ST_APLICA",
+    ]
+
+    df_st = matrices.get("st_regras")
+    if df_st is None or df_st.empty:
+        df_st = pd.DataFrame(columns=default_cols)
+    else:
+        for col in default_cols:
+            if col not in df_st.columns:
+                df_st[col] = ""
+        df_st = df_st[default_cols]
+
+    st_regras = df_st.fillna("").to_dict(orient="records")
+    columns = list(df_st.columns)
+    updated_at = datetime.now().isoformat(timespec="seconds")
+    total = len(st_regras)
+    ativos = sum(1 for row in st_regras if is_truthy(row.get("ATIVO")))
+    aplicaveis = sum(1 for row in st_regras if is_truthy(row.get("ST_APLICA")))
+
+    df_log = matrices.get("sources_log")
+    last_log = None
+    if df_log is not None and not df_log.empty:
+        last_entry = df_log.sort_values("EXECUTADO_EM").iloc[-1]
+        last_log = {
+            "executado_em": str(last_entry.get("EXECUTADO_EM", "")),
+            "status": last_entry.get("STATUS", ""),
+            "mensagem": last_entry.get("MENSAGEM", ""),
+            "linhas": last_entry.get("LINHAS", 0),
+        }
+
+    return render_template(
+        "config_tables.html",
+        active_tab="tables",
+        st_regras=st_regras,
+        columns=columns,
+        updated_at=updated_at,
+        total=total,
+        ativos=ativos,
+        aplicaveis=aplicaveis,
+        last_log=last_log,
     )
 
 @bp.route("/config/save", methods=["POST"])
@@ -362,6 +437,56 @@ def config_save():
         flash(f"Falha ao salvar fontes: {e}", "danger")
 
     return redirect(url_for("nfe.config_view"))
+
+
+@bp.route("/config/tabelas/save", methods=["POST"])
+@admin_required
+def config_tables_save():
+    cols = request.form.getlist("cols[]")
+    try:
+        row_count = int(request.form.get("row_count", "0"))
+    except ValueError:
+        row_count = 0
+
+    rows = []
+    for i in range(row_count):
+        row_data = {}
+        has_value = False
+        for col in cols:
+            field = request.form.get(f"row-{i}-{col}", "").strip()
+            row_data[col] = field
+            if field:
+                has_value = True
+        if has_value:
+            rows.append(row_data)
+
+    df_new = pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
+
+    try:
+        db.session.execute(delete(STRegra))
+        for row in df_new.to_dict(orient="records"):
+            ncm = _normalize_form_ncm(row.get("NCM", ""))
+            if not ncm:
+                continue
+            db.session.add(STRegra(
+                ativo=is_truthy(row.get("ATIVO")),
+                ncm=ncm,
+                cest=_normalize_form_cest(row.get("CEST", "")),
+                cst_incluir=_clean_optional_text(row.get("CST_INCLUIR")),
+                cst_excluir=_clean_optional_text(row.get("CST_EXCLUIR")),
+                cfop_ini=_clean_optional_text(row.get("CFOP_INI")),
+                cfop_fim=_clean_optional_text(row.get("CFOP_FIM")),
+                st_aplica=is_truthy(row.get("ST_APLICA")),
+            ))
+        db.session.commit()
+        reload_matrices()
+        rebuild_motor()
+        flash("Regras de ST atualizadas com sucesso no banco de dados.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Falha ao salvar regras de ST: {e}", "danger")
+
+    return redirect(url_for("nfe.config_tables_view"))
 
 # Diagnóstico opcional
 @bp.route("/debug/sheets")
