@@ -2,8 +2,23 @@
 {% block title %}Configurações — ZFM Calculator{% endblock %}
 {% block page_title %}<i class="bi bi-gear me-1"></i>Configurações{% endblock %}
 {% block content %}
+<div class="mb-3">
+  <ul class="nav nav-tabs">
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'sources' %}active{% endif %}" href="{{ url_for('nfe.config_view') }}">
+        <i class="bi bi-database-fill-gear me-1"></i> Fontes de pesquisa
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'tables' %}active{% endif %}" href="{{ url_for('nfe.config_tables_view') }}">
+        <i class="bi bi-table me-1"></i> Tabelas ST
+      </a>
+    </li>
+  </ul>
+</div>
 
 <div class="row g-3">
+  {% block tab_content %}
   <!-- Resumo das configurações -->
   <div class="col-12">
     <div class="card shadow-sm">
@@ -30,8 +45,18 @@
               <div class="card-body">
                 <div class="text-muted small mb-2">Resumo</div>
                 <div class="row row-cols-2 g-2">
-                  <div class="col"><div class="stat"><div class="label">Atualizado às</div><div class="value">{{ updated_at or '—' }}</div></div></div>
-                  <div class="col"><div class="stat"><div class="label">Fontes ativas</div><div class="value">{{ sources_count or 0 }}</div></div></div>
+                  <div class="col">
+                    <div class="stat">
+                      <div class="label">Atualizado às</div>
+                      <div class="value">{{ updated_at or '—' }}</div>
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div class="stat">
+                      <div class="label">Fontes ativas</div>
+                      <div class="value">{{ sources_count or 0 }}</div>
+                    </div>
+                  </div>
                 </div>
                 {% if last_log %}
                 <div class="small text-muted mt-2">Última execução automática processou {{ last_log.linhas or 0 }} linhas. Mensagem: {{ last_log.mensagem or '—' }}.</div>
@@ -58,8 +83,13 @@
   <div class="col-12">
     <div class="card shadow-sm">
       <div class="card-body">
-        <h6 class="mb-3">Fontes (aba <code>sources</code>)</h6>
         <form method="post" action="{{ url_for('nfe.config_save') }}">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">Fontes (aba <code>sources</code>)</h6>
+            <button type="button" class="btn btn-outline-primary btn-sm" data-add-row data-target="#sources-body" data-columns="{{ columns|join(',') }}">
+              <i class="bi bi-plus-lg me-1"></i>Adicionar linha
+            </button>
+          </div>
           <input type="hidden" name="row_count" value="{{ sources|length }}">
           <div class="table-responsive">
             <table class="table table-sm table-hover align-middle">
@@ -70,11 +100,12 @@
                   {% endfor %}
                 </tr>
               </thead>
-              <tbody class="small">
+              <tbody id="sources-body" class="small">
                 {% for r in sources %}
+                  {% set row_loop = loop %}
                   <tr>
                     {% for c in columns %}
-                      <td><input class="form-control form-control-sm" name="row-{{ loop.index0 }}-{{ c }}" value="{{ r[c] if r[c] is not none else '' }}"></td>
+                      <td><input class="form-control form-control-sm" name="row-{{ row_loop.index0 }}-{{ c }}" value="{{ r[c] if r[c] is not none else '' }}"></td>
                     {% endfor %}
                   </tr>
                 {% endfor %}
@@ -96,6 +127,43 @@
       </div>
     </div>
   </div>
-
+  {% endblock %}
 </div>
+{% endblock %}
+
+{% block body_extra %}
+{{ super() }}
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[data-add-row]').forEach(function(btn) {
+      btn.addEventListener('click', function(event) {
+        event.preventDefault();
+        const targetSelector = btn.getAttribute('data-target');
+        const target = targetSelector ? document.querySelector(targetSelector) : null;
+        if (!target) {
+          return;
+        }
+        const form = btn.closest('form');
+        const counter = form ? form.querySelector('input[name="row_count"]') : null;
+        const rawCols = btn.getAttribute('data-columns') || '';
+        const columns = rawCols.split(',').map(function(col) { return col.trim(); }).filter(function(col) { return col.length > 0; });
+        const index = counter ? parseInt(counter.value || '0', 10) : target.children.length;
+        const tr = document.createElement('tr');
+        columns.forEach(function(column) {
+          const td = document.createElement('td');
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'form-control form-control-sm';
+          input.name = `row-${index}-${column}`;
+          td.appendChild(input);
+          tr.appendChild(td);
+        });
+        target.appendChild(tr);
+        if (counter) {
+          counter.value = String(index + 1);
+        }
+      });
+    });
+  });
+</script>
 {% endblock %}

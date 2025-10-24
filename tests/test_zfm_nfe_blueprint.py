@@ -324,6 +324,31 @@ def test_config_view_ok(logged_client_admin, monkeypatch,url):
     assert "Última atualização automática" in body
 
 
+def test_config_tables_view_ok(logged_client_admin, monkeypatch, url):
+    df_st = pd.DataFrame([
+        {
+            "ATIVO": "1",
+            "NCM": "12345678",
+            "CEST": "1234567",
+            "CST_INCLUIR": "10",
+            "CST_EXCLUIR": "40",
+            "CFOP_INI": "5101",
+            "CFOP_FIM": "5102",
+            "ST_APLICA": "1",
+        }
+    ])
+    df_log = pd.DataFrame([
+        {"EXECUTADO_EM": "2024-01-01T00:00:00", "STATUS": "OK", "MENSAGEM": "ok", "LINHAS": 10}
+    ])
+    monkeypatch.setattr(nfe_mod, "get_matrices", lambda: {"st_regras": df_st, "sources_log": df_log})
+
+    resp = logged_client_admin.get(url("nfe.config_tables_view"))
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Tabela ST" in body
+    assert "Regras de ST" in body
+
+
 def test_config_save_ok(logged_client_admin, monkeypatch, url, app, db_session):
     with app.app_context():
         db_session.execute(delete(nfe_mod.Source))
@@ -364,6 +389,45 @@ def test_config_save_ok(logged_client_admin, monkeypatch, url, app, db_session):
         assert data["Fonte X"].prioridade == 1
         assert data["Fonte Y"].ativo is False
         assert data["Fonte Y"].prioridade == 2
+
+
+def test_config_tables_save_ok(logged_client_admin, monkeypatch, url, app, db_session):
+    with app.app_context():
+        db_session.execute(delete(nfe_mod.STRegra))
+        db_session.commit()
+
+    called = {"reload": False, "rebuild": False}
+    monkeypatch.setattr(nfe_mod, "reload_matrices", lambda: called.__setitem__("reload", True))
+    monkeypatch.setattr(nfe_mod, "rebuild_motor", lambda: called.__setitem__("rebuild", True))
+
+    cols = ["ATIVO","NCM","CEST","CST_INCLUIR","CST_EXCLUIR","CFOP_INI","CFOP_FIM","ST_APLICA"]
+    form = {
+        "cols[]": cols,
+        "row_count": "1",
+        "row-0-ATIVO": "on",
+        "row-0-NCM": "12.34.56.78",
+        "row-0-CEST": "12.345.67",
+        "row-0-CST_INCLUIR": "10",
+        "row-0-CST_EXCLUIR": "",
+        "row-0-CFOP_INI": "5101",
+        "row-0-CFOP_FIM": "5102",
+        "row-0-ST_APLICA": "Sim",
+    }
+
+    resp = logged_client_admin.post(url("nfe.config_tables_save"), data=form, follow_redirects=True)
+    assert resp.status_code == 200
+    assert called["reload"] and called["rebuild"]
+
+    with app.app_context():
+        rows = nfe_mod.STRegra.query.order_by(nfe_mod.STRegra.ncm).all()
+        assert len(rows) == 1
+        regra = rows[0]
+        assert regra.ncm == "12345678"
+        assert regra.cest == "1234567"
+        assert regra.cst_incluir == "10"
+        assert regra.cfop_ini == "5101"
+        assert regra.cfop_fim == "5102"
+        assert regra.st_aplica is True
 
 
 # ----------------------------
