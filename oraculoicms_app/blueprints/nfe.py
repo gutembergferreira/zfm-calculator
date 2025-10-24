@@ -11,7 +11,8 @@ from sqlalchemy import delete
 from updater import run_update_am, is_truthy
 from xml_parser import NFEXML
 from report import gerar_pdf
-from calc import ItemNF, ResultadoItem
+from calc import ItemNF, ResultadoItem, D, q2
+from decimal import Decimal
 from base64 import b64decode
 from oraculoicms_app.extensions import db
 from oraculoicms_app.models.file import NFESummary, UserFile
@@ -27,7 +28,7 @@ bp = Blueprint("nfe", __name__)
 ALLOWED_EXT = {"xml"}
 
 # --- helper: um único lugar com a regra de cálculo ---
-ALG_VERSION = "st-v1"
+ALG_VERSION = "st-v2"
 def _get_engine_safe():
     """
     Pega o engine via get_motor(); se vier dict/None, reconstrói.
@@ -51,7 +52,7 @@ def _compute_st_payload(xml_bytes, NFEXML, get_motor):
 
     motor = _get_engine_safe()
 
-    linhas, total_st = [], 0.0
+    linhas, total_st, total_nf_st = [], 0.0, 0.0
     for it in itens:
         r = motor.calcula_st(it, uf_origem, uf_destino, usar_multiplicador=True)
         m = r.memoria
@@ -74,9 +75,37 @@ def _compute_st_payload(xml_bytes, NFEXML, get_motor):
         mult_sefaz=f(m.get("MULT_SEFAZ", m.get("Multiplicador", m.get("MULTIPLICADOR SEFAZ", 0.0))))
         icms_retido=f(m.get("VALOR ICMS RETIDO", m.get("icms_retido", saldo_devedor)))
 
+        cest = getattr(it, "cest", "")
+        nf_mva_raw = D(getattr(it, "pMVAST", 0))
+        nf_mva_percent_dec = q2(nf_mva_raw)
+        nf_base_st_dec = q2(D(getattr(it, "vBCST", 0)))
+        nf_base_st_ret_dec = q2(D(getattr(it, "vBCSTRet", 0)))
+        nf_icms_st_dec = q2(D(getattr(it, "vICMSST", getattr(it, "vICMSSTRet", 0))))
+        nf_icms_st_ret_dec = q2(D(getattr(it, "vICMSSTRet", 0)))
+        nf_aliq_percent_dec = q2(D(getattr(it, "pICMSST", 0)))
+
+        calc_mva_percent_dec = q2(D(mva_percent))
+        calc_base_st_dec = q2(D(base_st))
+        calc_icms_st_dec = q2(D(icms_st))
+        calc_aliq_percent_dec = q2(D(aliq_st) * Decimal('100'))
+
+        dif_mva_percent_dec = q2(calc_mva_percent_dec - nf_mva_percent_dec)
+        dif_base_st_dec = q2(calc_base_st_dec - nf_base_st_dec)
+        dif_icms_st_dec = q2(calc_icms_st_dec - nf_icms_st_dec)
+        dif_aliq_percent_dec = q2(calc_aliq_percent_dec - nf_aliq_percent_dec)
+
+        divergente = any(
+            abs(val) > Decimal('0.01')
+            for val in (dif_icms_st_dec, dif_base_st_dec)
+        ) or any(
+            abs(val) > Decimal('0.10')
+            for val in (dif_mva_percent_dec, dif_aliq_percent_dec)
+        )
+
         linhas.append({
             "idx": it.nItem, "cProd": it.cProd, "xProd": it.xProd,
             "ncm": it.ncm, "cst": it.cst, "cfop": it.cfop,
+            "cest": cest,
             "qCom": qCom, "vUnCom": vUnCom, "vProd": vProd,
             "vFrete": vFrete, "vIPI": vIPI, "vOutro": vOutro,
             "vICMSDeson": vICMSDeson,
@@ -94,6 +123,18 @@ def _compute_st_payload(xml_bytes, NFEXML, get_motor):
             "mult_sefaz": mult_sefaz,
             "icms_retido": icms_retido,
 
+            "nf_mva_percent": float(nf_mva_percent_dec),
+            "nf_aliq_percent": float(nf_aliq_percent_dec),
+            "nf_base_st": float(nf_base_st_dec),
+            "nf_base_st_ret": float(nf_base_st_ret_dec),
+            "nf_icms_st": float(nf_icms_st_dec),
+            "nf_icms_st_ret": float(nf_icms_st_ret_dec),
+            "dif_mva_percent": float(dif_mva_percent_dec),
+            "dif_aliq_percent": float(dif_aliq_percent_dec),
+            "dif_base_st": float(dif_base_st_dec),
+            "dif_icms_st": float(dif_icms_st_dec),
+            "divergente": divergente,
+
             # aliases esperados no template
             "valor_operacao": valor_oper,
             "mva_percentual": mva_percent,
@@ -108,8 +149,15 @@ def _compute_st_payload(xml_bytes, NFEXML, get_motor):
             "valor_icms_retido": icms_retido,
         })
         total_st += float(r.icms_st_devido or 0.0)
+        total_nf_st += float(nf_icms_st_dec)
 
-    return {"uf_origem": uf_origem, "uf_destino": uf_destino, "linhas": linhas, "total_st": total_st}
+    return {
+        "uf_origem": uf_origem,
+        "uf_destino": uf_destino,
+        "linhas": linhas,
+        "total_st": total_st,
+        "total_nf_st": total_nf_st,
+    }
 
 
 def _normalize_form_ncm(value: str) -> str:
@@ -217,6 +265,7 @@ def calcular():
         return render_template("resultado.html",
             linhas=payload.get("linhas", []),
             total_st=float(payload.get("total_st", 0)),
+            total_nf_st=float(payload.get("total_nf_st", 0)),
             uf_origem=payload.get("uf_origem", "SP"),
             uf_destino=payload.get("uf_destino", "AM"),
             payload_json=_json.dumps(payload, ensure_ascii=False)
@@ -233,8 +282,11 @@ def calcular():
         db.session.add(summary); db.session.commit()
 
     return render_template("resultado.html",
-        linhas=payload["linhas"], total_st=payload["total_st"],
-        uf_origem=payload["uf_origem"], uf_destino=payload["uf_destino"],
+        linhas=payload["linhas"],
+        total_st=payload["total_st"],
+        total_nf_st=payload.get("total_nf_st", 0.0),
+        uf_origem=payload["uf_origem"],
+        uf_destino=payload["uf_destino"],
         payload_json=_json.dumps(payload, ensure_ascii=False)
     )
 

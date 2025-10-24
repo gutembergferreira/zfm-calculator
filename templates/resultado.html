@@ -29,22 +29,32 @@
   </div>
 
   {# ========================== Totais dos grupos ========================== #}
-  {% set ns_st = namespace(icms_des=0, base_st=0, icms_st=0, saldo=0, icms_retido=0, count=0) %}
-  {% set ns_nst = namespace(icms_des=0, base_st=0, icms_st=0, saldo=0, count=0) %}
+  {% set ns_st = namespace(icms_des=0, base_st=0, base_st_nf=0, icms_st=0, icms_st_nf=0, saldo=0, icms_retido=0, diff_base=0, diff_icms=0, count=0, divergentes=0) %}
+  {% set ns_nst = namespace(icms_des=0, base_st=0, base_st_nf=0, icms_st=0, icms_st_nf=0, saldo=0, diff_base=0, diff_icms=0, count=0, divergentes=0) %}
 
   {% for l in linhas %}
     {% if (l.base_st|float > 0) and (l.valor_icms_st|float > 0) %}
       {% set ns_st.icms_des = ns_st.icms_des + (l.vICMSDeson|float) %}
       {% set ns_st.base_st  = ns_st.base_st  + (l.base_st|float) %}
+      {% set ns_st.base_st_nf = ns_st.base_st_nf + (l.nf_base_st|float) %}
       {% set ns_st.icms_st  = ns_st.icms_st  + (l.valor_icms_st|float) %}
+      {% set ns_st.icms_st_nf = ns_st.icms_st_nf + (l.nf_icms_st|float) %}
       {% set ns_st.saldo    = ns_st.saldo    + (l.saldo_devedor|float) %}
       {% set ns_st.icms_retido = ns_st.icms_retido + (l.icms_retido|float) %}
+      {% set ns_st.diff_base = ns_st.diff_base + (l.dif_base_st|float) %}
+      {% set ns_st.diff_icms = ns_st.diff_icms + (l.dif_icms_st|float) %}
+      {% if l.divergente %}{% set ns_st.divergentes = ns_st.divergentes + 1 %}{% endif %}
       {% set ns_st.count    = ns_st.count + 1 %}
     {% else %}
       {% set ns_nst.icms_des = ns_nst.icms_des + (l.vICMSDeson|float) %}
       {% set ns_nst.base_st  = ns_nst.base_st  + (l.base_st|float) %}
+      {% set ns_nst.base_st_nf = ns_nst.base_st_nf + (l.nf_base_st|float) %}
       {% set ns_nst.icms_st  = ns_nst.icms_st  + (l.valor_icms_st|float) %}
+      {% set ns_nst.icms_st_nf = ns_nst.icms_st_nf + (l.nf_icms_st|float) %}
       {% set ns_nst.saldo    = ns_nst.saldo    + (l.saldo_devedor|float) %}
+      {% set ns_nst.diff_base = ns_nst.diff_base + (l.dif_base_st|float) %}
+      {% set ns_nst.diff_icms = ns_nst.diff_icms + (l.dif_icms_st|float) %}
+      {% if l.divergente %}{% set ns_nst.divergentes = ns_nst.divergentes + 1 %}{% endif %}
       {% set ns_nst.count    = ns_nst.count + 1 %}
     {% endif %}
   {% endfor %}
@@ -52,15 +62,24 @@
   <!-- Cards de totais (grupo COM ST) -->
   <div class="card shadow-sm mb-3">
     <div class="card-body">
-      <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
         <div class="section-title mb-0">Totais — Itens com Substituição Tributária ({{ ns_st.count }})</div>
-        <span class="badge text-bg-primary">ICMS Retido Total: R$ {{ '%.2f'|format(ns_st.icms_retido) }}</span>
+        <div class="d-flex gap-2 flex-wrap">
+          <span class="badge text-bg-primary">ICMS Retido Total: R$ {{ '%.2f'|format(ns_st.icms_retido) }}</span>
+          <span class="badge {% if ns_st.divergentes %}text-bg-danger{% else %}text-bg-success{% endif %}">Divergências: {{ ns_st.divergentes }}</span>
+        </div>
       </div>
       <div class="row g-3">
-        <div class="col-6 col-md-3"><div class="stat"><div class="label">ICMS Desonerado</div><div class="value">R$ {{ '%.2f'|format(ns_st.icms_des) }}</div></div></div>
-        <div class="col-6 col-md-3"><div class="stat"><div class="label">Base de Cálc. ST</div><div class="value">R$ {{ '%.2f'|format(ns_st.base_st) }}</div></div></div>
-        <div class="col-6 col-md-3"><div class="stat"><div class="label">Valor do ICMS ST</div><div class="value">R$ {{ '%.2f'|format(ns_st.icms_st) }}</div></div></div>
-        <div class="col-6 col-md-3"><div class="stat"><div class="label">Saldo Devedor ST</div><div class="value">R$ {{ '%.2f'|format(ns_st.saldo) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">ICMS Desonerado</div><div class="value">R$ {{ '%.2f'|format(ns_st.icms_des) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">Base ST (Calculado)</div><div class="value">R$ {{ '%.2f'|format(ns_st.base_st) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">Base ST (NF-e)</div><div class="value">R$ {{ '%.2f'|format(ns_st.base_st_nf) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">Diferença Base ST</div><div class="value">R$ {{ '%.2f'|format(ns_st.base_st - ns_st.base_st_nf) }}</div></div></div>
+      </div>
+      <div class="row g-3 mt-1">
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">ICMS ST (Calculado)</div><div class="value">R$ {{ '%.2f'|format(ns_st.icms_st) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">ICMS ST (NF-e)</div><div class="value">R$ {{ '%.2f'|format(total_nf_st if total_nf_st is defined else ns_st.icms_st_nf) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">Diferença ICMS ST</div><div class="value">R$ {{ '%.2f'|format((total_st - (total_nf_st if total_nf_st is defined else ns_st.icms_st_nf))) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">Saldo Devedor ST</div><div class="value">R$ {{ '%.2f'|format(ns_st.saldo) }}</div></div></div>
       </div>
     </div>
   </div>
@@ -68,12 +87,21 @@
   <!-- Cards de totais (grupo SEM ST) -->
   <div class="card shadow-sm mb-4">
     <div class="card-body">
-      <div class="section-title mb-2">Totais — Itens sem Substituição Tributária ({{ ns_nst.count }})</div>
+      <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+        <div class="section-title mb-0">Totais — Itens sem Substituição Tributária ({{ ns_nst.count }})</div>
+        <span class="badge {% if ns_nst.divergentes %}text-bg-warning{% else %}text-bg-secondary{% endif %}">Divergências: {{ ns_nst.divergentes }}</span>
+      </div>
       <div class="row g-3">
-        <div class="col-6 col-md-3"><div class="stat"><div class="label">ICMS Desonerado</div><div class="value">R$ {{ '%.2f'|format(ns_nst.icms_des) }}</div></div></div>
-        <div class="col-6 col-md-3"><div class="stat"><div class="label">Base de Cálc. ST</div><div class="value">R$ {{ '%.2f'|format(ns_nst.base_st) }}</div></div></div>
-        <div class="col-6 col-md-3"><div class="stat"><div class="label">Valor do ICMS ST</div><div class="value">R$ {{ '%.2f'|format(ns_nst.icms_st) }}</div></div></div>
-        <div class="col-6 col-md-3"><div class="stat"><div class="label">Saldo Devedor ST</div><div class="value">R$ {{ '%.2f'|format(ns_nst.saldo) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">ICMS Desonerado</div><div class="value">R$ {{ '%.2f'|format(ns_nst.icms_des) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">Base ST (Calculado)</div><div class="value">R$ {{ '%.2f'|format(ns_nst.base_st) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">Base ST (NF-e)</div><div class="value">R$ {{ '%.2f'|format(ns_nst.base_st_nf) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">Diferença Base ST</div><div class="value">R$ {{ '%.2f'|format(ns_nst.base_st - ns_nst.base_st_nf) }}</div></div></div>
+      </div>
+      <div class="row g-3 mt-1">
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">ICMS ST (Calculado)</div><div class="value">R$ {{ '%.2f'|format(ns_nst.icms_st) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">ICMS ST (NF-e)</div><div class="value">R$ {{ '%.2f'|format(ns_nst.icms_st_nf) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">Diferença ICMS ST</div><div class="value">R$ {{ '%.2f'|format(ns_nst.icms_st - ns_nst.icms_st_nf) }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="label">Saldo Devedor ST</div><div class="value">R$ {{ '%.2f'|format(ns_nst.saldo) }}</div></div></div>
       </div>
     </div>
   </div>
@@ -116,6 +144,7 @@
                   <th>Cód. Produto</th>
                   <th>Descrição</th>
                   <th>NCM</th>
+                  <th>CEST</th>
                   <th>CST</th>
                   <th>CFOP</th>
                   <th class="text-end">Quant.</th>
@@ -127,11 +156,19 @@
                   <th class="text-end">ICMS Desonerado</th>
                   <th class="text-end">Venda c/ Desc. ICMS</th>
                   <th class="text-end">Valor da Operação</th>
-                  <th class="text-end">MVA (%)</th>
+                  <th class="text-end">MVA Calc. (%)</th>
+                  <th class="text-end">MVA NF (%)</th>
+                  <th class="text-end">Dif. MVA (%)</th>
                   <th class="text-end">Valor Agregado</th>
                   <th class="text-end">Base de Cálc. ST</th>
+                  <th class="text-end">Base ST NF</th>
+                  <th class="text-end">Dif. Base ST</th>
                   <th class="text-end">Alíquota ICMS-ST</th>
+                  <th class="text-end">Alíquota NF (%)</th>
+                  <th class="text-end">Dif. Alíquota</th>
                   <th class="text-end">Valor do ICMS ST</th>
+                  <th class="text-end">ICMS ST NF</th>
+                  <th class="text-end">Dif. ICMS ST</th>
                   <th class="text-end">Saldo Devedor ST</th>
                   <th class="text-end">Multiplicador SEFAZ</th>
                   <th class="text-end">ICMS Retido</th>
@@ -140,11 +177,12 @@
               <tbody id="tbody-st" class="small">
                 {% for l in linhas
                      if (l.base_st|float > 0) and (l.valor_icms_st|float > 0) %}
-                  <tr data-filter="{{ (l.cProd ~ ' ' ~ l.xProd ~ ' ' ~ l.ncm ~ ' ' ~ l.cfop)|lower }}">
+                  <tr class="{% if l.divergente %}table-danger{% endif %}" data-filter="{{ (l.cProd ~ ' ' ~ l.xProd ~ ' ' ~ l.ncm ~ ' ' ~ l.cfop)|lower }}">
                     <td>{{ l.idx }}</td>
                     <td>{{ l.cProd }}</td>
                     <td class="desc" title="{{ l.xProd }}">{{ l.xProd }}</td>
                     <td>{{ l.ncm }}</td>
+                    <td>{{ l.cest }}</td>
                     <td>{{ l.cst }}</td>
                     <td>{{ l.cfop }}</td>
                     <td class="text-end">{{ '%.4f'|format(l.qCom) }}</td>
@@ -157,22 +195,30 @@
                     <td class="text-end">{{ '%.2f'|format(l.venda_desc_icms) }}</td>
                     <td class="text-end">{{ '%.2f'|format(l.valor_operacao) }}</td>
                     <td class="text-end">{{ '%.2f'|format(l.mva_percentual) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.nf_mva_percent) }}</td>
+                    <td class="text-end">{{ '%+.2f'|format(l.dif_mva_percent) }}</td>
                     <td class="text-end">{{ '%.2f'|format(l.valor_agregado) }}</td>
                     <td class="text-end">{{ '%.2f'|format(l.base_st) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.nf_base_st) }}</td>
+                    <td class="text-end">{{ '%+.2f'|format(l.dif_base_st) }}</td>
                     <td class="text-end">{{ '%.2f%%'|format(l.aliq_st*100) }}</td>
+                    <td class="text-end">{{ '%.2f%%'|format(l.nf_aliq_percent) }}</td>
+                    <td class="text-end">{{ '%+.2f%%'|format(l.dif_aliq_percent) }}</td>
                     <td class="text-end">{{ '%.2f'|format(l.valor_icms_st) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.nf_icms_st) }}</td>
+                    <td class="text-end">{{ '%+.2f'|format(l.dif_icms_st) }}</td>
                     <td class="text-end">{{ '%.2f'|format(l.saldo_devedor) }}</td>
                     <td class="text-end">{{ '%.2f%%'|format(l.multiplicador*100) }}</td>
                     <td class="text-end fw-semibold">{{ '%.2f'|format(l.icms_retido) }}</td>
                   </tr>
                 {% endfor %}
                 {% if ns_st.count == 0 %}
-                  <tr><td colspan="23" class="text-center text-muted">Nenhum item com ST.</td></tr>
+                  <tr><td colspan="32" class="text-center text-muted">Nenhum item com ST.</td></tr>
                 {% endif %}
               </tbody>
               <tfoot class="table-light">
                 <tr>
-                  <td colspan="22" class="text-end"><strong>Total ICMS Retido</strong></td>
+                  <td colspan="31" class="text-end"><strong>Total ICMS Retido</strong></td>
                   <td class="text-end fw-bold">{{ '%.2f'|format(ns_st.icms_retido) }}</td>
                 </tr>
               </tfoot>
@@ -203,6 +249,7 @@
                   <th>Cód. Produto</th>
                   <th>Descrição</th>
                   <th>NCM</th>
+                  <th>CEST</th>
                   <th>CST</th>
                   <th>CFOP</th>
                   <th class="text-end">Quant.</th>
@@ -214,11 +261,19 @@
                   <th class="text-end">ICMS Desonerado</th>
                   <th class="text-end">Venda c/ Desc. ICMS</th>
                   <th class="text-end">Valor da Operação</th>
-                  <th class="text-end">MVA (%)</th>
+                  <th class="text-end">MVA Calc. (%)</th>
+                  <th class="text-end">MVA NF (%)</th>
+                  <th class="text-end">Dif. MVA (%)</th>
                   <th class="text-end">Valor Agregado</th>
                   <th class="text-end">Base de Cálc. ST</th>
+                  <th class="text-end">Base ST NF</th>
+                  <th class="text-end">Dif. Base ST</th>
                   <th class="text-end">Alíquota ICMS-ST</th>
+                  <th class="text-end">Alíquota NF (%)</th>
+                  <th class="text-end">Dif. Alíquota</th>
                   <th class="text-end">Valor do ICMS ST</th>
+                  <th class="text-end">ICMS ST NF</th>
+                  <th class="text-end">Dif. ICMS ST</th>
                   <th class="text-end">Saldo Devedor ST</th>
                   <th class="text-end">Multiplicador SEFAZ</th>
                   <th class="text-end">ICMS Retido</th>
@@ -227,11 +282,12 @@
               <tbody id="tbody-nst" class="small">
                 {% for l in linhas
                      if not ((l.base_st|float > 0) and (l.valor_icms_st|float > 0)) %}
-                  <tr data-filter="{{ (l.cProd ~ ' ' ~ l.xProd ~ ' ' ~ l.ncm ~ ' ' ~ l.cfop)|lower }}">
+                  <tr class="{% if l.divergente %}table-warning{% endif %}" data-filter="{{ (l.cProd ~ ' ' ~ l.xProd ~ ' ' ~ l.ncm ~ ' ' ~ l.cfop)|lower }}">
                     <td>{{ l.idx }}</td>
                     <td>{{ l.cProd }}</td>
                     <td class="desc" title="{{ l.xProd }}">{{ l.xProd }}</td>
                     <td>{{ l.ncm }}</td>
+                    <td>{{ l.cest }}</td>
                     <td>{{ l.cst }}</td>
                     <td>{{ l.cfop }}</td>
                     <td class="text-end">{{ '%.4f'|format(l.qCom) }}</td>
@@ -244,17 +300,25 @@
                     <td class="text-end">{{ '%.2f'|format(l.venda_desc_icms) }}</td>
                     <td class="text-end">{{ '%.2f'|format(l.valor_operacao) }}</td>
                     <td class="text-end">{{ '%.2f'|format(l.mva_percentual) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.nf_mva_percent) }}</td>
+                    <td class="text-end">{{ '%+.2f'|format(l.dif_mva_percent) }}</td>
                     <td class="text-end">{{ '%.2f'|format(l.valor_agregado) }}</td>
                     <td class="text-end">{{ '%.2f'|format(l.base_st) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.nf_base_st) }}</td>
+                    <td class="text-end">{{ '%+.2f'|format(l.dif_base_st) }}</td>
                     <td class="text-end">{{ '%.2f%%'|format(l.aliq_st*100) }}</td>
+                    <td class="text-end">{{ '%.2f%%'|format(l.nf_aliq_percent) }}</td>
+                    <td class="text-end">{{ '%+.2f%%'|format(l.dif_aliq_percent) }}</td>
                     <td class="text-end">{{ '%.2f'|format(l.valor_icms_st) }}</td>
+                    <td class="text-end">{{ '%.2f'|format(l.nf_icms_st) }}</td>
+                    <td class="text-end">{{ '%+.2f'|format(l.dif_icms_st) }}</td>
                     <td class="text-end">{{ '%.2f'|format(l.saldo_devedor) }}</td>
                     <td class="text-end">{{ '%.2f%%'|format(l.multiplicador*100) }}</td>
                     <td class="text-end fw-semibold">{{ '%.2f'|format(l.icms_retido) }}</td>
                   </tr>
                 {% endfor %}
                 {% if ns_nst.count == 0 %}
-                  <tr><td colspan="23" class="text-center text-muted">Nenhum item sem ST.</td></tr>
+                  <tr><td colspan="32" class="text-center text-muted">Nenhum item sem ST.</td></tr>
                 {% endif %}
               </tbody>
             </table>
