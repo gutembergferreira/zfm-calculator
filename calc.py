@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 from dataclasses import dataclass
+import math
 from decimal import Decimal, getcontext, ROUND_HALF_UP
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -101,7 +102,51 @@ class MotorCalculo:
 
     @staticmethod
     def _only_digits(s: Any) -> str:
-        return "".join(ch for ch in str(s) if ch.isdigit())
+        """Extrai apenas dígitos, normalizando floats/decimais inteiros.
+
+        Muitos arquivos de planilha chegam com códigos numéricos (NCM/CEST)
+        convertidos para `float`, ficando algo como ``1002000.0``.  Se apenas
+        removêssemos o ponto, ganharíamos um zero extra (``10020000``) e o
+        match por CEST deixaria de acontecer.  Aqui normalizamos esses casos
+        para preservar apenas a parte inteira.
+        """
+
+        if s is None:
+            return ""
+
+        # Valores numéricos -> representa como inteiro quando não há parte
+        # fracionária. Isso evita zeros extras vindos de floats "x.0".
+        if isinstance(s, bool):  # bool é subclass de int; ignora aqui
+            pass
+        elif isinstance(s, (int, Decimal)):
+            try:
+                dec = Decimal(s)
+            except Exception:
+                dec = None
+            else:
+                if dec == dec.to_integral():
+                    return str(dec.quantize(Decimal('1')))
+        elif isinstance(s, float):
+            if math.isnan(s) or math.isinf(s):
+                return ""
+            if s.is_integer():
+                return str(int(s))
+            # formata sem notação científica; remove zeros finais
+            txt = format(s, 'f').rstrip('0').rstrip('.')
+            return "".join(ch for ch in txt if ch.isdigit())
+
+        text = str(s).strip()
+        if not text:
+            return ""
+
+        # Se for algo do tipo "1234.00" ou "1234,00" mantém apenas parte inteira
+        if text.count('.') + text.count(',') == 1:
+            sep = '.' if '.' in text else ','
+            left, right = text.split(sep, 1)
+            if right.strip().strip('0') == "":
+                return "".join(ch for ch in left if ch.isdigit())
+
+        return "".join(ch for ch in text if ch.isdigit())
 
     @staticmethod
     def _to_bool(v: Any) -> Optional[bool]:
@@ -203,8 +248,14 @@ class MotorCalculo:
                 if col_cest and col_cest in row:
                     raw_cest = self._only_digits(row[col_cest])
                     if raw_cest:
-                        if not cest_digits or cest_digits != raw_cest:
+                        if not cest_digits:
                             continue
+                        try:
+                            if int(raw_cest) != int(cest_digits):
+                                continue
+                        except ValueError:
+                            if cest_digits != raw_cest:
+                                continue
                         cest_score = 2  # match exato de CEST
                     else:
                         cest_score = 1  # linha genérica para qualquer CEST
