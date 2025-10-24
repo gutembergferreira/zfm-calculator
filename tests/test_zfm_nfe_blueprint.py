@@ -11,6 +11,8 @@ from sqlalchemy import delete
 from oraculoicms_app.extensions import db
 from oraculoicms_app.models.file import UserFile, NFESummary
 from oraculoicms_app.blueprints import nfe as nfe_mod
+from types import SimpleNamespace
+from decimal import Decimal
 
 
 # ----------------------------
@@ -117,6 +119,75 @@ def _fake_get_motor():
             }
             return _CalcResult(icms_st_devido=0.0, memoria=mem)
     return _Motor()
+
+
+def test__compute_st_payload_adiciona_diferencas(monkeypatch):
+    fake_item = SimpleNamespace(
+        nItem=1,
+        cProd="0903",
+        xProd="Produto teste",
+        ncm="0903000911",
+        cst="060",
+        cfop="5102",
+        cest="0000000",
+        qCom=1,
+        vUnCom=100.0,
+        vProd=100.0,
+        vFrete=0.0,
+        vIPI=0.0,
+        vOutro=0.0,
+        vICMSDeson=0.0,
+        pMVAST=70.0,
+        vBCST=170.0,
+        vICMSST=30.0,
+        pICMSST=18.0,
+    )
+
+    class _FakeNFEXML:
+        def __init__(self, xml_bytes):
+            self._xml = xml_bytes
+
+        def header(self):
+            return {"uf_origem": "SP", "uf_destino": "AM"}
+
+        def itens(self):
+            return [fake_item]
+
+    class _Motor:
+        def calcula_st(self, item, uf_origem, uf_destino, usar_multiplicador=True):
+            mem = {
+                "ICMS DESONERADO": 0.0,
+                "VALOR DA VENDA COM DESCONTO DE ICMS": 100.0,
+                "VALOR DA OPERAÇÃO": 100.0,
+                "MARGEM_DE_VALOR_AGREGADO_MVA": 80.0,
+                "VALOR AGREGADO": 80.0,
+                "BASE ST": 180.0,
+                "BASE_ST": 180.0,
+                "ALÍQUOTA ICMS-ST": Decimal("0.20"),
+                "icms_teorico_dest": 36.0,
+                "icms_origem_calc": 7.0,
+                "VALOR_ICMS_ST": 29.0,
+                "SALDO_DEVEDOR_ST": 22.0,
+                "VALOR SALDO DEVEDOR ICMS ST": 22.0,
+                "MULT_SEFAZ": Decimal("0.25"),
+                "VALOR ICMS RETIDO": 18.0,
+                "Multiplicador": Decimal("0.25"),
+            }
+            return _CalcResult(icms_st_devido=29.0, memoria=mem)
+
+    monkeypatch.setattr(nfe_mod, "_get_engine_safe", lambda: _Motor())
+
+    payload = nfe_mod._compute_st_payload(b"<xml />", _FakeNFEXML, lambda: None)
+    assert payload["total_st"] == pytest.approx(29.0)
+    assert payload["total_nf_st"] == pytest.approx(30.0)
+
+    linha = payload["linhas"][0]
+    assert linha["cest"] == "0000000"
+    assert linha["nf_base_st"] == pytest.approx(170.0)
+    assert linha["nf_icms_st"] == pytest.approx(30.0)
+    assert linha["dif_base_st"] == pytest.approx(10.0)
+    assert linha["dif_icms_st"] == pytest.approx(-1.0)
+    assert linha["divergente"] is True
 
 
 # ----------------------------

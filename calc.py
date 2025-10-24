@@ -48,6 +48,7 @@ class ItemNF:
     ncm: str = ""
     cfop: str = ""
     cst: str = ""
+    cest: str = ""
     quantidade: Decimal = Decimal('0')
     valor_unitario: Decimal = Decimal('0')
     frete: Decimal = Decimal('0')
@@ -127,7 +128,7 @@ class MotorCalculo:
             if pd is not None and isinstance(df, pd.DataFrame):
                 yield name, df
 
-    def _lookup_ncm_rules(self, ncm: str, uf_dest: str) -> Dict[str, Any]:
+    def _lookup_ncm_rules(self, ncm: str, uf_dest: str, cest: str = "") -> Dict[str, Any]:
         """
         Procura nas planilhas qualquer linha para o NCM (match exato ou por prefixo) e UF de destino.
         Retorna:
@@ -141,9 +142,10 @@ class MotorCalculo:
         Se nada encontrado, retorna dict vazio -> significa "sem regra".
         """
         ncm_digits = self._only_digits(ncm)
+        cest_digits = self._only_digits(cest)
         uf = self._norm(uf_dest)
 
-        melhor: Tuple[int, Dict[str, Any]] = ( -1, {} )  # (tamanho_do_prefixo_casado, regra)
+        melhor: Tuple[int, int, Dict[str, Any]] = ( -1, -1, {} )  # (tamanho_prefixo, score_cest, regra)
 
         for name, df in self._iter_dataframes():
             if df is None or df.empty:
@@ -165,6 +167,13 @@ class MotorCalculo:
             for cuf in ["UF","UF_DESTINO","UF DEST","UF_DEST","DESTINO","UF_UF"]:
                 if cuf in cols_up:
                     col_uf = cols_up[cuf]
+                    break
+
+            # CEST (se houver)
+            col_cest = None
+            for ccest in ["CEST", "COD_CEST", "CODIGO CEST"]:
+                if ccest in cols_up:
+                    col_cest = cols_up[ccest]
                     break
 
             # colunas possíveis de decisão
@@ -189,6 +198,17 @@ class MotorCalculo:
                     if uf_row and uf_row not in ("", uf, "TODAS", "TODOS", "ALL", "*"):
                         continue
 
+                # checa CEST: se a linha tiver CEST preenchido, precisa bater exatamente
+                cest_score = 0
+                if col_cest and col_cest in row:
+                    raw_cest = self._only_digits(row[col_cest])
+                    if raw_cest:
+                        if not cest_digits or cest_digits != raw_cest:
+                            continue
+                        cest_score = 2  # match exato de CEST
+                    else:
+                        cest_score = 1  # linha genérica para qualquer CEST
+
                 # coleta valores
                 aplica_st = self._to_bool(self._first_present(row, [cols_up[k] for k in cand_aplica])) if cand_aplica else None
                 mva_val = self._first_present(row, [cols_up[k] for k in cand_mva]) if cand_mva else None
@@ -206,10 +226,10 @@ class MotorCalculo:
 
                 # escolhe a mais específica
                 prefix_len = len(raw_ncm)
-                if prefix_len > melhor[0]:
-                    melhor = (prefix_len, regra)
+                if (prefix_len, cest_score) > (melhor[0], melhor[1]):
+                    melhor = (prefix_len, cest_score, regra)
 
-        return melhor[1]
+        return melhor[2]
 
     # ------------------------- núcleo de cálculo -------------------------
 
@@ -336,6 +356,7 @@ class MotorCalculo:
                 ncm = str(raw.get("ncm", "")),
                 cfop = str(raw.get("cfop", "")),
                 cst = str(raw.get("cst", "")),
+                cest = str(raw.get("cest", raw.get("CEST", ""))),
                 quantidade = D(raw.get("quantidade", 0)),
                 valor_unitario = D(raw.get("valor_unitario", 0)),
                 frete = D(raw.get("frete", 0)),
@@ -365,6 +386,7 @@ class MotorCalculo:
             ncm=str(getattr(nf_item, "ncm", "") or ""),
             cfop=str(getattr(nf_item, "cfop", "") or ""),
             cst=str(getattr(nf_item, "cst", "") or ""),
+            cest=str(getattr(nf_item, "cest", "") or ""),
             quantidade=D(getattr(nf_item, "qCom", 0)),
             valor_unitario=D(getattr(nf_item, "vUnCom", 0)),
             frete=D(getattr(nf_item, "vFrete", 0)),
@@ -380,7 +402,7 @@ class MotorCalculo:
         )
 
         # consulta regras por NCM/UF
-        regra = self._lookup_ncm_rules(it.ncm, uf_destino)
+        regra = self._lookup_ncm_rules(it.ncm, uf_destino, it.cest)
 
         # começa com defaults
         p_raw: Dict[str, Any] = {

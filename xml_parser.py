@@ -43,6 +43,12 @@ class NFItem:
     cEAN: str = ""
     cEANTrib: str = ""
     cest: str = ""
+    pMVAST: Decimal = Decimal("0")
+    pICMSST: Decimal = Decimal("0")
+    vBCST: Decimal = Decimal("0")
+    vICMSST: Decimal = Decimal("0")
+    vBCSTRet: Decimal = Decimal("0")
+    vICMSSTRet: Decimal = Decimal("0")
 
 class NFEXML:
     def __init__(self, xml_bytes: bytes):
@@ -168,11 +174,23 @@ class NFEXML:
             # ICMS
             cst = ""
             vICMSDeson = Decimal("0")
+            pMVAST = Decimal("0")
+            pICMSST = Decimal("0")
+            vBCST = Decimal("0")
+            vICMSST = Decimal("0")
+            vBCSTRet = Decimal("0")
+            vICMSSTRet = Decimal("0")
             icms = imposto.find(self._mkpath("ICMS")) if imposto is not None else None
             if icms is not None:
                 for child in list(icms):
                     cst = self._txt(child, "CST") or self._txt(child, "CSOSN") or ""
                     vICMSDeson = D(self._txt(child, "vICMSDeson", "0"))
+                    pMVAST = D(self._txt(child, "pMVAST", "0"))
+                    pICMSST = D(self._txt(child, "pICMSST", "0"))
+                    vBCST = D(self._txt(child, "vBCST", "0"))
+                    vICMSST = D(self._txt(child, "vICMSST", "0"))
+                    vBCSTRet = D(self._txt(child, "vBCSTRet", "0"))
+                    vICMSSTRet = D(self._txt(child, "vICMSSTRet", "0"))
                     break
 
             vIPI = Decimal("0")
@@ -189,6 +207,9 @@ class NFEXML:
                 "vIPI": vIPI, "vICMSDeson": vICMSDeson,
                 "vFrete_item": vFrete_item,
                 "uCom": uCom, "uTrib": uTrib, "cEAN": cEAN, "cEANTrib": cEANTrib, "cest": cest,
+                "pMVAST": pMVAST, "pICMSST": pICMSST,
+                "vBCST": q2(vBCST), "vICMSST": q2(vICMSST),
+                "vBCSTRet": q2(vBCSTRet), "vICMSSTRet": q2(vICMSSTRet),
             })
             soma_vprod += vProd
 
@@ -217,6 +238,9 @@ class NFEXML:
                 qCom=q2(r["qCom"]), vUnCom=q2(r["vUnCom"]), vProd=q2(r["vProd"]),
                 vFrete=vFrete_i, vIPI=q2(r["vIPI"]), vOutro=vOutro_i, vICMSDeson=q2(r["vICMSDeson"]),
                 uCom=r["uCom"], uTrib=r["uTrib"], cEAN=r["cEAN"], cEANTrib=r["cEANTrib"], cest=r["cest"],
+                pMVAST=q2(r["pMVAST"]), pICMSST=q2(r["pICMSST"]),
+                vBCST=q2(r["vBCST"]), vICMSST=q2(r["vICMSST"]),
+                vBCSTRet=q2(r["vBCSTRet"]), vICMSSTRet=q2(r["vICMSSTRet"]),
             ))
         return itens
 
